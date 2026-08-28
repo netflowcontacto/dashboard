@@ -432,3 +432,287 @@ CREATE TABLE IF NOT EXISTS meetings (
   created_at   TEXT NOT NULL DEFAULT nf_now()
 );
 CREATE INDEX IF NOT EXISTS idx_meetings_starts ON meetings(starts_at);
+
+-- ============================================================================
+-- DOMINIO DE ADQUISICIÓN
+--
+-- Todo lo que está arriba de esta línea modela UN funnel: NetFlow consiguiendo
+-- médicos como clientes. Lo que sigue modela el OTRO, que es el servicio que
+-- NetFlow cobra: cada cliente consiguiendo pacientes.
+--
+-- Son dos negocios distintos y no se mezclan nunca. `leads` son médicos que
+-- NetFlow quiere como clientes; `client_leads` son pacientes que un cliente
+-- quiere como pacientes. Confundirlos haría que el CPL de la agencia y el de
+-- las cuentas terminen en el mismo promedio, que no significa nada.
+--
+-- Toda tabla de acá abajo lleva `client_id`. No es redundancia: es el borde
+-- por donde se corta el día que un cliente entre a ver sus propios números,
+-- y filtrar por una columna indexada es más barato y más difícil de olvidar
+-- que reconstruir el dueño con tres joins en cada consulta.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- Jerarquía de pauta: cuenta -> campaña -> ad set -> anuncio -> creatividad
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ad_accounts (
+  id           INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_id    INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  platform     TEXT NOT NULL DEFAULT 'meta' CHECK (platform IN ('meta','google','tiktok','otro')),
+  external_id  TEXT NOT NULL DEFAULT '',
+  name         TEXT NOT NULL,
+  currency     TEXT NOT NULL DEFAULT 'ARS' CHECK (currency IN ('ARS','USD')),
+  status       TEXT NOT NULL DEFAULT 'activa' CHECK (status IN ('activa','pausada','cerrada')),
+  connected_at TEXT,
+  created_at   TEXT NOT NULL DEFAULT nf_now()
+);
+CREATE INDEX IF NOT EXISTS idx_ad_accounts_client ON ad_accounts(client_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ad_accounts_ext
+  ON ad_accounts(platform, external_id) WHERE external_id <> '';
+
+CREATE TABLE IF NOT EXISTS campaigns (
+  id                 INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ad_account_id      INTEGER NOT NULL REFERENCES ad_accounts(id) ON DELETE CASCADE,
+  client_id          INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  external_id        TEXT NOT NULL DEFAULT '',
+  name               TEXT NOT NULL,
+  objective          TEXT NOT NULL DEFAULT '',
+  status             TEXT NOT NULL DEFAULT 'activa' CHECK (status IN ('activa','pausada','finalizada','borrador')),
+  daily_budget_cents INTEGER NOT NULL DEFAULT 0,
+  started_at         TEXT,
+  created_at         TEXT NOT NULL DEFAULT nf_now(),
+  updated_at         TEXT NOT NULL DEFAULT nf_now()
+);
+CREATE INDEX IF NOT EXISTS idx_campaigns_client  ON campaigns(client_id, status);
+CREATE INDEX IF NOT EXISTS idx_campaigns_account ON campaigns(ad_account_id);
+
+CREATE TABLE IF NOT EXISTS ad_sets (
+  id                 INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  campaign_id        INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  client_id          INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  external_id        TEXT NOT NULL DEFAULT '',
+  name               TEXT NOT NULL,
+  audience           TEXT NOT NULL DEFAULT '',
+  status             TEXT NOT NULL DEFAULT 'activa' CHECK (status IN ('activa','pausada','finalizada','borrador')),
+  daily_budget_cents INTEGER NOT NULL DEFAULT 0,
+  created_at         TEXT NOT NULL DEFAULT nf_now()
+);
+CREATE INDEX IF NOT EXISTS idx_ad_sets_campaign ON ad_sets(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_ad_sets_client   ON ad_sets(client_id);
+
+-- La creatividad vive aparte del anuncio porque la misma pieza se prueba en
+-- varios ad sets: si el hook viviera en `ads`, comparar "cómo rinde este
+-- ángulo" obligaría a agrupar por nombre de texto libre.
+CREATE TABLE IF NOT EXISTS creatives (
+  id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_id     INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  format        TEXT NOT NULL DEFAULT 'imagen' CHECK (format IN ('imagen','video','carrusel','texto','otro')),
+  hook          TEXT NOT NULL DEFAULT '',
+  angle         TEXT NOT NULL DEFAULT '',
+  thumbnail_key TEXT NOT NULL DEFAULT '',
+  first_used_at TEXT,
+  notes         TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT nf_now()
+);
+CREATE INDEX IF NOT EXISTS idx_creatives_client ON creatives(client_id);
+
+CREATE TABLE IF NOT EXISTS ads (
+  id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ad_set_id   INTEGER NOT NULL REFERENCES ad_sets(id) ON DELETE CASCADE,
+  client_id   INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  creative_id INTEGER REFERENCES creatives(id) ON DELETE SET NULL,
+  external_id TEXT NOT NULL DEFAULT '',
+  name        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'activo' CHECK (status IN ('activo','pausado','finalizado','borrador')),
+  created_at  TEXT NOT NULL DEFAULT nf_now()
+);
+CREATE INDEX IF NOT EXISTS idx_ads_ad_set   ON ads(ad_set_id);
+CREATE INDEX IF NOT EXISTS idx_ads_creative ON ads(creative_id);
+CREATE INDEX IF NOT EXISTS idx_ads_client   ON ads(client_id);
+
+-- ---------------------------------------------------------------------------
+-- Gasto y entrega, por día
+--
+-- `level` dice a qué altura de la jerarquía está cargada la fila. Cuando no
+-- hay API todavía, Paid Media carga a nivel campaña; cuando la haya, van a
+-- entrar filas por anuncio. Sumar las dos cosas contaría el gasto dos veces,
+-- así que las métricas NO leen esta tabla: leen la vista de más abajo, que
+-- para cada campaña y día se queda con el nivel más fino que exista.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ad_insights_daily (
+  id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_id      INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  campaign_id    INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  ad_set_id      INTEGER REFERENCES ad_sets(id) ON DELETE CASCADE,
+  ad_id          INTEGER REFERENCES ads(id) ON DELETE CASCADE,
+  level          TEXT NOT NULL DEFAULT 'campaign' CHECK (level IN ('campaign','ad_set','ad')),
+  date           TEXT NOT NULL,
+  spend_cents    INTEGER NOT NULL DEFAULT 0,
+  currency       TEXT NOT NULL DEFAULT 'ARS' CHECK (currency IN ('ARS','USD')),
+  impressions    INTEGER NOT NULL DEFAULT 0,
+  reach          INTEGER NOT NULL DEFAULT 0,
+  clicks         INTEGER NOT NULL DEFAULT 0,
+  platform_leads INTEGER NOT NULL DEFAULT 0,
+  source         TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','csv','meta_api','google_api')),
+  synced_at      TEXT NOT NULL DEFAULT nf_now(),
+
+  CONSTRAINT nivel_coincide_con_entidad CHECK (
+    (level = 'campaign' AND ad_set_id IS NULL AND ad_id IS NULL)
+    OR (level = 'ad_set' AND ad_set_id IS NOT NULL AND ad_id IS NULL)
+    OR (level = 'ad' AND ad_set_id IS NOT NULL AND ad_id IS NOT NULL)
+  )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_insights_unico
+  ON ad_insights_daily(campaign_id, date, level, COALESCE(ad_set_id, 0), COALESCE(ad_id, 0));
+CREATE INDEX IF NOT EXISTS idx_insights_client ON ad_insights_daily(client_id, date);
+CREATE INDEX IF NOT EXISTS idx_insights_ad     ON ad_insights_daily(ad_id, date);
+
+-- Para cada campaña y día, el nivel más fino cargado. Es lo único que deberían
+-- consultar las métricas de inversión.
+CREATE OR REPLACE VIEW ad_insights_effective AS
+WITH finura AS (
+  SELECT campaign_id, date,
+         MIN(CASE level WHEN 'ad' THEN 1 WHEN 'ad_set' THEN 2 ELSE 3 END) AS mejor
+  FROM ad_insights_daily
+  GROUP BY campaign_id, date
+)
+SELECT i.*
+FROM ad_insights_daily i
+JOIN finura f
+  ON f.campaign_id = i.campaign_id
+ AND f.date = i.date
+ AND f.mejor = CASE i.level WHEN 'ad' THEN 1 WHEN 'ad_set' THEN 2 ELSE 3 END;
+
+-- ---------------------------------------------------------------------------
+-- Presupuesto mensual por cliente. Sin esto no hay pacing: falta el 100%
+-- contra el cual medir lo consumido.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS budgets (
+  id           INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_id    INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  period       TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  currency     TEXT NOT NULL DEFAULT 'ARS' CHECK (currency IN ('ARS','USD')),
+  notes        TEXT NOT NULL DEFAULT '',
+  created_at   TEXT NOT NULL DEFAULT nf_now(),
+  updated_at   TEXT NOT NULL DEFAULT nf_now(),
+
+  UNIQUE (client_id, period)
+);
+CREATE INDEX IF NOT EXISTS idx_budgets_period ON budgets(client_id, period);
+
+-- ---------------------------------------------------------------------------
+-- Los pacientes: el funnel que NetFlow le opera a cada cliente.
+--
+-- Misma forma que `leads` a propósito (etapa + resultado + próxima acción
+-- obligatoria mientras esté abierto), para que las dos pantallas de pipeline
+-- se sientan iguales y el motor de métricas trate a los dos igual.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS client_leads (
+  id                 INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_id          INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  campaign_id        INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+  ad_set_id          INTEGER REFERENCES ad_sets(id) ON DELETE SET NULL,
+  ad_id              INTEGER REFERENCES ads(id) ON DELETE SET NULL,
+
+  name               TEXT NOT NULL,
+  phone              TEXT NOT NULL DEFAULT '',
+  email              TEXT NOT NULL DEFAULT '',
+  treatment          TEXT NOT NULL DEFAULT '',
+  source             TEXT NOT NULL DEFAULT 'meta_ads',
+  entered_at         TEXT NOT NULL,
+
+  assigned_to        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+
+  stage              TEXT NOT NULL DEFAULT 'nuevo' CHECK (stage IN (
+                       'nuevo','contactado','respondio','calificando','calificado',
+                       'agendado','asistio','seguimiento','cerrado')),
+  outcome            TEXT NOT NULL DEFAULT 'open' CHECK (outcome IN ('open','won','lost')),
+
+  -- Calidad del lead. Es lo que separa "100 leads baratos que no sirven" de
+  -- "40 leads caros que compran", y por eso es un campo y no un cálculo.
+  quality            TEXT CHECK (quality IN ('A','B','C','D')),
+  quality_reason     TEXT NOT NULL DEFAULT '',
+
+  next_action        TEXT,
+  next_action_date   TEXT,
+
+  first_contacted_at TEXT,
+  responded_at       TEXT,
+  qualified_at       TEXT,
+  booked_at          TEXT,
+  showed_at          TEXT,
+  closed_at          TEXT,
+
+  no_show_count      INTEGER NOT NULL DEFAULT 0,
+  lost_reason        TEXT,
+  value_cents        INTEGER NOT NULL DEFAULT 0,
+  currency           TEXT NOT NULL DEFAULT 'ARS' CHECK (currency IN ('ARS','USD')),
+  notes              TEXT NOT NULL DEFAULT '',
+
+  created_at         TEXT NOT NULL DEFAULT nf_now(),
+  updated_at         TEXT NOT NULL DEFAULT nf_now(),
+
+  -- La misma regla que rige el pipeline de la agencia: nadie queda sin
+  -- próxima acción mientras esté abierto, y nadie se da por perdido sin decir
+  -- por qué.
+  CONSTRAINT paciente_abierto_necesita_proxima_accion CHECK (
+    outcome <> 'open'
+    OR (next_action IS NOT NULL AND trim(next_action) <> ''
+        AND next_action_date IS NOT NULL AND trim(next_action_date) <> '')
+  ),
+  CONSTRAINT paciente_perdido_necesita_motivo CHECK (
+    outcome <> 'lost' OR (lost_reason IS NOT NULL AND trim(lost_reason) <> '')
+  )
+);
+CREATE INDEX IF NOT EXISTS idx_client_leads_client  ON client_leads(client_id, stage);
+CREATE INDEX IF NOT EXISTS idx_client_leads_ad      ON client_leads(ad_id);
+CREATE INDEX IF NOT EXISTS idx_client_leads_camp    ON client_leads(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_client_leads_next    ON client_leads(next_action_date);
+CREATE INDEX IF NOT EXISTS idx_client_leads_entered ON client_leads(entered_at);
+CREATE INDEX IF NOT EXISTS idx_client_leads_owner   ON client_leads(assigned_to);
+
+CREATE TABLE IF NOT EXISTS client_lead_events (
+  id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_lead_id INTEGER NOT NULL REFERENCES client_leads(id) ON DELETE CASCADE,
+  type           TEXT NOT NULL,
+  from_stage     TEXT,
+  to_stage       TEXT,
+  detail         TEXT NOT NULL DEFAULT '',
+  user_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  at             TEXT NOT NULL DEFAULT nf_now()
+);
+CREATE INDEX IF NOT EXISTS idx_client_lead_events_lead ON client_lead_events(client_lead_id);
+CREATE INDEX IF NOT EXISTS idx_client_lead_events_at   ON client_lead_events(at);
+
+-- Turnos. Separado de `meetings` porque aquellas son reuniones comerciales de
+-- NetFlow y estas son turnos de pacientes: distinto dueño, distinto ciclo y
+-- distinta gente mirándolos.
+CREATE TABLE IF NOT EXISTS appointments (
+  id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  client_id      INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  client_lead_id INTEGER REFERENCES client_leads(id) ON DELETE CASCADE,
+  starts_at      TEXT NOT NULL,
+  status         TEXT NOT NULL DEFAULT 'agendado' CHECK (status IN (
+                   'agendado','asistio','no_show','reprogramado','cancelado')),
+  source         TEXT NOT NULL DEFAULT 'manual',
+  external_id    TEXT,
+  notes          TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT nf_now()
+);
+CREATE INDEX IF NOT EXISTS idx_appointments_client ON appointments(client_id, starts_at);
+CREATE INDEX IF NOT EXISTS idx_appointments_lead   ON appointments(client_lead_id);
+
+-- ---------------------------------------------------------------------------
+-- Columnas nuevas sobre tablas que ya existían.
+-- ---------------------------------------------------------------------------
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS health_score        INTEGER;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS health_computed_at  TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS health_breakdown    TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS campaign_id    INTEGER REFERENCES campaigns(id) ON DELETE SET NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ad_id          INTEGER REFERENCES ads(id) ON DELETE SET NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_lead_id INTEGER REFERENCES client_leads(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_tasks_campaign ON tasks(campaign_id);
+
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS ad_account_id INTEGER REFERENCES ad_accounts(id) ON DELETE SET NULL;
