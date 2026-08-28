@@ -8,8 +8,8 @@ import Nav, { type NavItem } from "@/components/Nav";
  *
  * La navegación se arma en el servidor a partir de los permisos: una persona
  * del equipo ni siquiera recibe el link a Finanzas. De todas formas cada
- * página sensible vuelve a validar con requireAdmin(): ocultar el link no es
- * un control de acceso.
+ * pantalla de administración vuelve a validar con requireAdminOr404(): ocultar
+ * el enlace no es un control de acceso, y un 404 no delata que exista.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();

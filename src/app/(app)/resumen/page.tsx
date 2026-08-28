@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdminOr404 } from "@/lib/auth";
 import { resolveRange, formatPeriod, formatDate, monthOf, todayISO } from "@/lib/dates";
 import { buildOverview } from "@/lib/metrics/overview";
 import { daysLeftInPeriod } from "@/lib/metrics/objectives";
-import { compareMetrics, metricHistory, previousRange, MONTH_SHORT } from "@/lib/metrics/compare";
+import { compareMetrics, metricHistory, previousRange } from "@/lib/metrics/compare";
 import { financeSummary, monthlyTrend } from "@/lib/metrics/finance";
 import { alertsFor } from "@/lib/alerts";
 import { setupStatus } from "@/lib/setup";
@@ -13,7 +13,7 @@ import {
   Badge, Card, EmptyState, HeroStat, Note, PageHeader, ProgressBar,
   SectionTitle, StatCard, formatPct,
 } from "@/components/ui";
-import { BarList, ColumnsChart, type DeltaValue } from "@/components/charts";
+import { BarList, type DeltaValue } from "@/components/charts";
 import RangePicker from "@/components/RangePicker";
 import SetupChecklist from "./SetupChecklist";
 
@@ -34,7 +34,7 @@ export default async function ResumenPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requireAdmin();
+  const user = await requireAdminOr404();
   const sp = await searchParams;
   const range = resolveRange({
     preset: sp.preset as string,
@@ -52,6 +52,11 @@ export default async function ResumenPage({
   const setup = await setupStatus();
   const cur = f.currency;
   const daysLeft = daysLeftInPeriod(monthOf(today));
+  const clientesConSemaforo = {
+    ...o.clients,
+    riesgo: o.clients.byHealth.riesgo,
+    atencion: o.clients.byHealth.atencion,
+  };
 
   const cmp = await compareMetrics(
     ["clientes_nuevos", "clientes_activos", "leads_totales", "mrr_total", "ingresos_cobrados"],
@@ -134,74 +139,58 @@ export default async function ResumenPage({
         )}
       </Card>
 
-      <SectionTitle>Clientes e ingresos</SectionTitle>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/*
+        Seis indicadores, no dieciséis.
+
+        La memoria de trabajo maneja entre cinco y nueve elementos a la vez;
+        pasados los doce, un tablero se deja de mirar. El criterio para que una
+        tarjeta esté acá es doble: que sea ACCIONABLE y que se necesite SEGUIDO.
+        El resto del detalle vive en Finanzas y en Funnel, a un clic.
+      */}
+      <SectionTitle
+        action={
+          <span className="text-xs text-faint">
+            El detalle está en{" "}
+            <Link href="/finanzas" className="text-brand-ink hover:underline">Finanzas</Link>
+            {" "}y{" "}
+            <Link href="/funnel" className="text-brand-ink hover:underline">Funnel</Link>
+          </span>
+        }
+      >
+        Los números que miro todos los días
+      </SectionTitle>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard
           label="Clientes activos"
           value={o.clients.active}
           href="/clientes"
           delta={toDelta("clientes_activos")}
           spark={histClientes.map((h) => ({ label: h.label, value: h.value }))}
+          hint={
+            clientesConSemaforo.riesgo > 0
+              ? `${clientesConSemaforo.riesgo} en riesgo · ${clientesConSemaforo.atencion} en atención`
+              : clientesConSemaforo.atencion > 0
+                ? `${clientesConSemaforo.atencion} en atención`
+                : "Todas las cuentas bien"
+          }
         />
         <StatCard
           label="MRR"
           value={formatMoney(f.mrrCents, cur)}
+          href="/finanzas"
           delta={moneyDelta(f.mrrCents, prevFinance.mrrCents)}
           spark={histMrr.map((h) => ({ label: h.label, value: Math.round(h.value) }))}
         />
         <StatCard
-          label="Facturación cobrada"
-          value={formatMoney(f.collectedCents, cur)}
-          tone="ok"
-          delta={moneyDelta(f.collectedCents, prevFinance.collectedCents)}
-        />
-        <StatCard
-          label="Facturación pendiente"
-          value={formatMoney(f.pendingCents, cur)}
-          tone={f.pendingCents > 0 ? "warn" : "neutral"}
-          hint={
-            o.clients.pendingPayment > 0
-              ? `${o.clients.pendingPayment} cliente(s) con cobro abierto`
-              : "Todos los cobros al día"
-          }
-        />
-      </div>
-
-      <SectionTitle>Caja y resultado</SectionTitle>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          label="Caja disponible"
-          value={formatMoney(f.cashCents, cur)}
-          href="/finanzas"
-          hint={
-            f.runwayMonths !== null
-              ? `Runway ~${f.runwayMonths.toFixed(1)} meses`
-              : "Cargá gastos para estimar el runway"
-          }
-        />
-        <StatCard
-          label="Gastos del período"
-          value={formatMoney(f.totalExpensesCents, cur)}
-          href="/finanzas"
-          delta={moneyDelta(f.totalExpensesCents, prevFinance.totalExpensesCents, false)}
-        />
-        <StatCard
           label="Resultado del período"
           value={formatMoney(f.resultCents, cur)}
+          href="/finanzas"
           tone={f.resultCents >= 0 ? "ok" : "risk"}
-          hint="Facturado − costos directos − gastos operativos"
           delta={moneyDelta(f.resultCents, prevFinance.resultCents)}
+          hint={`Caja ${formatMoney(f.cashCents, cur)}${
+            f.runwayMonths !== null ? ` · runway ~${f.runwayMonths.toFixed(0)} meses` : ""
+          }`}
         />
-        <StatCard
-          label="Margen bruto"
-          value={formatPct(f.grossMarginPct, 1)}
-          tone={(f.grossMarginPct ?? 0) >= 60 ? "ok" : (f.grossMarginPct ?? 0) >= 35 ? "warn" : "risk"}
-          hint={`Margen neto ${formatPct(f.netMarginPct, 1)}`}
-        />
-      </div>
-
-      <SectionTitle>Eficiencia comercial</SectionTitle>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Leads del período"
           value={o.funnel.cohort.leads}
@@ -210,23 +199,20 @@ export default async function ResumenPage({
           spark={histLeads.map((h) => ({ label: h.label, value: h.value }))}
         />
         <StatCard
+          label="Reuniones realizadas"
+          value={o.funnel.activity.reunionesRealizadas}
+          href="/funnel"
+          hint={`${o.funnel.activity.propuestas} propuesta(s) enviada(s)`}
+        />
+        <StatCard
           label="CAC"
           value={o.funnel.rates.cacCents !== null ? formatMoney(o.funnel.rates.cacCents, cur) : "—"}
           href="/funnel"
-          hint="Inversión del período / clientes cerrados"
-        />
-        <StatCard
-          label="CPL"
-          value={o.funnel.rates.cplCents !== null ? formatMoney(o.funnel.rates.cplCents, cur) : "—"}
-          href="/funnel"
-          hint={`Inversión ${formatMoney(expensesByCat, cur)}`}
-        />
-        <StatCard
-          label="Ticket promedio"
-          value={f.averageTicketCents !== null ? formatMoney(f.averageTicketCents, cur) : "—"}
-          hint={`Costo operativo por cliente ${
-            f.operatingCostPerClientCents !== null ? formatMoney(f.operatingCostPerClientCents, cur) : "—"
-          }`}
+          hint={
+            o.funnel.rates.cplCents !== null
+              ? `CPL ${formatMoney(o.funnel.rates.cplCents, cur)} · inversión ${formatMoney(expensesByCat, cur)}`
+              : `Inversión ${formatMoney(expensesByCat, cur)}`
+          }
         />
       </div>
 
@@ -359,19 +345,6 @@ export default async function ResumenPage({
           )}
         </Card>
       </div>
-
-      <SectionTitle>Tendencia</SectionTitle>
-      <Card title="Facturado vs gastos" subtitle="Últimos 6 meses, consolidado en la moneda base.">
-        <ColumnsChart
-          labels={trend.map((t) => MONTH_SHORT[Number(t.period.slice(5, 7)) - 1])}
-          series={[
-            { key: "facturado", label: "Facturado", slot: 1, values: trend.map((t) => t.billedCents) },
-            { key: "gastos", label: "Gastos", slot: 2, values: trend.map((t) => t.expensesCents) },
-          ]}
-          format={{ kind: "moneda", currency: cur }}
-          height={170}
-        />
-      </Card>
 
       <SectionTitle>Progreso del equipo</SectionTitle>
       <Card

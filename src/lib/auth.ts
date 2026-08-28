@@ -19,10 +19,15 @@ export async function requireUser(): Promise<Viewer> {
   return user;
 }
 
-/** Exige rol de dirección. Es la puerta a todo lo que sea administrar. */
+/**
+ * Exige rol de dirección para una acción de escritura.
+ *
+ * Para PANTALLAS usar `requireAdminOr404`: no queremos contarle al equipo que
+ * existe una sección a la que no llega.
+ */
 export async function requireAdmin(): Promise<Viewer> {
   const user = await requireUser();
-  if (user.role !== "admin") redirect("/mi-panel?sin_acceso=1");
+  if (user.role !== "admin") redirect("/mi-panel");
   return user;
 }
 

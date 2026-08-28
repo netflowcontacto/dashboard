@@ -113,7 +113,6 @@ export default async function MiPanelPage({
     (t) => t.status !== "hecho" && t.due_date !== null && t.due_date < today,
   );
 
-  const noAccess = sp.sin_acceso === "1";
 
   return (
     <>
@@ -124,11 +123,6 @@ export default async function MiPanelPage({
         <RangePicker preset={range.preset} from={range.from} to={range.to} />
       </PageHeader>
 
-      {noAccess && (
-        <p className="mb-4 rounded-lg border border-warn-soft bg-warn-soft px-3 py-2 text-sm text-warn">
-          Esa sección es de dirección. Acá tenes todo lo tuyo.
-        </p>
-      )}
 
       {/* Objetivo general de NetFlow ---------------------------------------- */}
       <Card className="mb-4" title="Objetivo general de NetFlow" subtitle={formatPeriod(period)}>
@@ -173,7 +167,7 @@ export default async function MiPanelPage({
       <Card
         className="mt-4"
         title="Mi resultado"
-        subtitle="Contra mis objetivos del mes. Solo lo ves vos y dirección."
+        subtitle="Contra mis objetivos del mes."
       >
         <ProgressBar
           pct={me.progress.pct}
@@ -412,12 +406,6 @@ export default async function MiPanelPage({
         </Card>
       )}
 
-      {!can(user, "finanzas:ver") && (
-        <p className="mt-6 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-          Este panel no incluye información financiera de la empresa (caja, margenes, costos de otras
-          personas ni rentabilidad). Si necesitas algo de eso para tu trabajo, pedilo a dirección.
-        </p>
-      )}
     </>
   );
 }
