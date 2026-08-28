@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { all, one, run, insert, tx } from "./db";
-import { todayISO } from "./dates";
+import { todayISO, nowStamp } from "./dates";
 
 /**
  * Capa de integraciones.
@@ -273,7 +273,7 @@ export async function applyInboundLead(
         input.meetingAt ? "Preparar la reunión" : "Primer contacto",
         input.meetingAt ? input.meetingAt.slice(0, 10) : today,
         input.meetingAt ?? null,
-        input.meetingAt ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
+        input.meetingAt ? nowStamp() : null,
         input.meetingAt ? "agendada" : "sin_reunion",
         input.notes ?? "",
       ],

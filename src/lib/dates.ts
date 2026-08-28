@@ -14,8 +14,49 @@ export interface DateRange {
 
 export type RangePreset = "hoy" | "semana" | "mes" | "trimestre" | "personalizado";
 
+/**
+ * Zona horaria de la operación. Es la misma que usa `nf_now()` en la base.
+ *
+ * Tienen que coincidir sí o sí: la base sella con hora argentina y si acá se
+ * calculara "hoy" en UTC, entre las 21:00 y la medianoche la aplicación
+ * entera estaría trabajando con la fecha de mañana. El preset "Hoy" saldría
+ * vacío, una tarea que vence hoy diría "vence mañana", y marcar una tarea
+ * como hecha a las 22 la sellaría con la fecha del día siguiente — eso último
+ * corrompe "Entregas a tiempo" de forma permanente.
+ */
+const ZONA = process.env.TZ || "America/Argentina/Buenos_Aires";
+
+// `en-CA` formatea como YYYY-MM-DD, que es exactamente el formato del esquema.
+const FORMATO_FECHA = new Intl.DateTimeFormat("en-CA", {
+  timeZone: ZONA,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** La fecha de hoy en la zona de la operación, no en UTC. */
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return FORMATO_FECHA.format(new Date());
+}
+
+/**
+ * La marca de tiempo de ahora, en la zona de la operación.
+ * Mismo formato que `nf_now()`: 'YYYY-MM-DD HH:MI:SS'.
+ */
+export function nowStamp(): string {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: ZONA,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const g = (tipo: string) => p.find((x) => x.type === tipo)?.value ?? "00";
+  return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}:${g("second")}`;
 }
 
 export function isoDate(d: Date): string {

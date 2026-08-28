@@ -23,6 +23,8 @@ export interface BoardLead {
   missing: boolean;
   valueCents: number;
   currency: Currency;
+  /** El mismo valor llevado a la moneda base, para poder sumar la columna. */
+  valueBaseCents: number;
   phone: string;
   email: string;
 }
@@ -49,7 +51,13 @@ const ETAPAS: Stage[] = [
  * no puede revertir un movimiento equivocado, deja de confiar en el tablero.
  * Si el servidor falla, la tarjeta vuelve sola a donde estaba.
  */
-export default function PipelineBoard({ leads: initial }: { leads: BoardLead[] }) {
+export default function PipelineBoard({
+  leads: initial,
+  monedaBase,
+}: {
+  leads: BoardLead[];
+  monedaBase: Currency;
+}) {
   const [leads, setLeads] = useState(initial);
   const [arrastrando, setArrastrando] = useState<number | null>(null);
   const [encima, setEncima] = useState<Stage | null>(null);
@@ -102,7 +110,9 @@ export default function PipelineBoard({ leads: initial }: { leads: BoardLead[] }
       <div className="flex min-w-max gap-3">
         {ETAPAS.map((stage) => {
           const items = leads.filter((l) => l.stage === stage);
-          const total = items.reduce((a, l) => a + l.valueCents, 0);
+          // Se suma el valor ya convertido: una columna con una oportunidad en
+          // pesos y otra en dólares no se puede sumar en crudo.
+          const total = items.reduce((a, l) => a + l.valueBaseCents, 0);
           const activa = encima === stage;
 
           return (
@@ -218,7 +228,7 @@ export default function PipelineBoard({ leads: initial }: { leads: BoardLead[] }
 
               {total > 0 && (
                 <p className="tnum mt-2 px-1 text-xs text-faint">
-                  Potencial: {formatMoney(total, items[0]?.currency ?? "USD")}
+                  Potencial: {formatMoney(total, monedaBase)}
                 </p>
               )}
             </div>

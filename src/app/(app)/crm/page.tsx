@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { leadsList, leadSources, userMap, usersList } from "@/lib/queries";
 import { formatDate, todayISO, dueLabel, plural } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { loadFx, toBase } from "@/lib/fx";
 import { STAGE_LABEL, STAGES, type Stage } from "@/lib/types";
 import { Badge, Card, EmptyState, Note, PageHeader, StatCard } from "@/components/ui";
 import ExportButton from "@/components/ExportButton";
@@ -51,7 +52,14 @@ export default async function CrmPage({
   const overdueCount = openLeads.filter(
     (l) => l.next_action_date !== null && l.next_action_date < today,
   ).length;
-  const openValue = openLeads.reduce((a, l) => a + l.potential_value_cents, 0);
+  // Sumar centavos de monedas distintas da un número que no significa nada.
+  // Cada valor se lleva a la moneda base antes de sumar; el original queda
+  // intacto y cada tarjeta lo sigue mostrando en la moneda en que se cargó.
+  const fx = await loadFx();
+  const openValue = openLeads.reduce(
+    (a, l) => a + toBase(l.potential_value_cents, l.potential_currency, fx),
+    0,
+  );
   const missingData = openLeads.filter(
     (l) => !l.next_action || !l.next_action_date || !l.owner_id,
   ).length;
@@ -98,7 +106,7 @@ export default async function CrmPage({
           value={missingData}
           tone={missingData > 0 ? "warn" : "ok"}
         />
-        <StatCard label="Valor potencial abierto" value={formatMoney(openValue, "USD")} />
+        <StatCard label="Valor potencial abierto" value={formatMoney(openValue, fx.base)} />
       </div>
 
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -124,9 +132,11 @@ export default async function CrmPage({
           missing: !l.next_action || !l.next_action_date,
           valueCents: l.potential_value_cents,
           currency: l.potential_currency,
+          valueBaseCents: toBase(l.potential_value_cents, l.potential_currency, fx),
           phone: l.contact_phone,
           email: l.contact_email,
         }))}
+        monedaBase={fx.base}
       />
       ) : (
       <Card title="Todas las oportunidades del filtro" subtitle={`${plural(leads.length, "resultado")}.`}>

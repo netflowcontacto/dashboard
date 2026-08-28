@@ -326,6 +326,15 @@
     }
     .btn { padding-block: 0.7rem; }
     .btn-sm { min-height: 44px; min-width: 44px; padding-block: 0.5rem; }
+    /* Safari en iPhone hace zoom sobre cualquier campo cuyo texto mida menos
+       de 16px, y después la página queda descuadrada. Es la corrección más
+       barata de todo el proyecto: dos líneas contra un tirón en cada toque. */
+    .field,
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
     .seg-item { padding-inline: 0.875rem; }
     /* min-height no hace nada sobre un enlace en línea: hay que darle caja. */
     nav a,

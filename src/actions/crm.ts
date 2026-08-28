@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { all, one, run, insert, tx } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { todayISO } from "@/lib/dates";
+import { nowStamp, todayISO } from "@/lib/dates";
 import { parseAmountToCents } from "@/lib/money";
 import * as F from "@/lib/form";
 import { errorMessage, type ActionState } from "@/lib/errors";
@@ -34,10 +34,6 @@ function backfillTimestamps(stage: Stage, current: Record<string, unknown>, now:
 
   // Perdido: se preserva lo que ya habia ocurrido; no se inventa nada.
   return out;
-}
-
-function nowStamp(): string {
-  return new Date().toISOString().slice(0, 19).replace("T", " ");
 }
 
 export async function createLead(_prev: ActionState, fd: FormData): Promise<ActionState> {
