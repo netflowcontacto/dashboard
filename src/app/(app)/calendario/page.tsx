@@ -158,7 +158,7 @@ export default async function CalendarioPage({
                   <ul className="space-y-1.5">
                     {items.map((it, i) => (
                       <li key={`${day}-${i}`}>
-                        <Link href={it.href} className="block hover:underline">
+                        <Link href={it.href} className="tap hover:underline">
                           <span className="text-sm font-medium">{it.label}</span>
                           <span className="block text-xs text-muted">{it.detail}</span>
                         </Link>

@@ -5,11 +5,13 @@
   "description": "Centro de control interno de NetFlow: dashboard administrador + dashboard equipo",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/check-server-actions.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:seed": "node scripts/seed.mjs",
+    "check:acciones": "node scripts/check-server-actions.mjs",
     "postbuild": "node scripts/postbuild.mjs"
   },
   "dependencies": {

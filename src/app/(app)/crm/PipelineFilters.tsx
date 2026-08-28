@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
-import { STAGE_LABEL, STAGES, type User } from "@/lib/types";
+import { STAGE_LABEL, STAGES, type User, SOURCE_LABEL, humanize } from "@/lib/types";
 
 export default function PipelineFilters({
   users,
@@ -105,10 +105,10 @@ export default function PipelineFilters({
           onChange={(e) => set("source", e.target.value)}
           aria-label="Origen"
         >
-          <option value="todas">Todos los origenes</option>
+          <option value="todas">Todos los orígenes</option>
           {sources.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {SOURCE_LABEL[s] ?? humanize(s)}
             </option>
           ))}
         </select>

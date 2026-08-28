@@ -54,7 +54,7 @@ export default function RangePicker({
                 : apply({ preset: p.key, from: null, to: null })
             }
             aria-pressed={preset === p.key}
-            className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+            className={`seg-item ${
               preset === p.key ? "bg-brand text-white" : "text-muted hover:bg-surface-2"
             }`}
           >

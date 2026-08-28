@@ -273,15 +273,17 @@ const setter: MetricDef[] = [
   },
   {
     key: "follow_ups",
-    label: "Follow-ups",
+    label: "Contactos y seguimientos",
     unit: "numero",
     scope: "setter",
     higherIsBetter: true,
+    help: "Llamadas, WhatsApp, emails y seguimientos registrados en la bitácora.",
     compute: async ({ range, userIds }) => {
       const f = userFilter("user_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM lead_events
-         WHERE type = 'follow_up' AND substr(at,1,10) BETWEEN ? AND ?${f.sql}`,
+         WHERE type IN ('follow_up','llamada','whatsapp','email')
+           AND substr(at,1,10) BETWEEN ? AND ?${f.sql}`,
         [range.from, range.to, ...f.params],
       );
     },

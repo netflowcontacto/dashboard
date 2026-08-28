@@ -325,3 +325,78 @@ una palabra que además era **una clave de código**.
 La regla que quedó: **el texto que se lee lleva tilde; la clave que se compara,
 nunca.** Y la verificación que lo detecta es leer el HTML renderizado de todas
 las pantallas y buscar palabras sin tilde, en vez de revisar el código.
+
+## 22. Contactar y registrar son un solo acto
+
+El CRM se muere cuando cargar la información es un trabajo aparte del trabajo.
+Por eso los botones de WhatsApp, llamar y email de la ficha y de las tarjetas
+hacen dos cosas al mismo tiempo: abren el canal con el mensaje ya escrito y
+dejan el intento anotado en la bitácora. Si era el primer contacto, además
+completan `first_contacted_at` y mueven la etapa de `nuevo` a `contactado`.
+
+La consecuencia es que el tiempo de respuesta del setter se llena con el
+trabajo real y no depende de que alguien se acuerde de volver a la pantalla a
+actualizar el estado.
+
+Registrar una actividad a mano (`ActivityComposer`) pide el tipo, el detalle y
+la próxima acción **en un solo paso**: separar "anotar lo que pasó" de "definir
+qué sigue" es lo que produce oportunidades abiertas sin próxima acción.
+
+## 23. Mover una tarjeta se puede deshacer
+
+El tablero mueve la tarjeta antes de que conteste el servidor: eso es lo que lo
+hace sentir instantáneo. Un movimiento optimista sin vuelta atrás es una
+trampa, así que siempre viene con un aviso que ofrece **Deshacer** durante seis
+segundos; si el servidor falla, la tarjeta vuelve sola a su lugar.
+
+Cerrar como ganada o perdida no se puede hacer arrastrando: una venta ganada
+necesita el cliente cargado y una perdida el motivo. Esas dos siguen pidiendo
+abrir la ficha, a propósito.
+
+En celular no se arrastra —pelea con el scroll de la página—: cada tarjeta
+tiene una flecha que la manda a la etapa siguiente.
+
+## 24. Tablero o lista, nunca las dos apiladas
+
+La página del CRM mostraba el tablero y debajo la tabla completa: la misma
+información dos veces y una pantalla larguísima. Ahora se elige con un control
+de dos opciones. El tablero muestra lo abierto y sirve para mover; la lista
+muestra todo lo que entra en el filtro —ganadas y perdidas incluidas— y sirve
+para buscar y exportar.
+
+El control son **enlaces, no botones**: funcionan antes de que cargue el
+JavaScript, se pueden abrir en otra pestaña y la vista elegida viaja en la URL,
+así que un enlace compartido abre lo mismo que estabas mirando.
+
+## 25. Un archivo `"use server"` solo exporta funciones async
+
+Exportar una constante desde un archivo de acciones compila sin una sola queja
+y explota recién en runtime, al renderizar la página que la importa:
+
+```
+Error: A "use server" file can only export async functions, found object.
+```
+
+Pasó con la lista de tipos de actividad y dejó la ficha del lead en blanco sin
+que el build dijera nada. Las constantes viven ahora en `src/lib/`, y
+`scripts/check-server-actions.mjs` corre en el `prebuild` para que el error
+aparezca antes de desplegar y no en producción.
+
+## 26. Objetivos táctiles de 44 píxeles y ancho que no se escapa
+
+Con el dedo no hay puntería fina. Todo lo que se toca —botones, filas de lista,
+enlaces de tabla, casillas, el filtro de período— tiene 44 píxeles de alto
+cuando el puntero es grueso (`@media (pointer: coarse)`). Quedan por debajo
+solo los enlaces dentro de un párrafo, que es la excepción razonable.
+
+Aparte, `.scroll-x` lleva `min-width: 0`, `max-width: 100%` y
+**`position: relative`**. Lo último no es decorativo: los `sr-only` del tablero
+están posicionados en absoluto, y sin un ancestro posicionado su caja se
+escapaba del contenedor con scroll y empujaba el ancho de la página a 1580px.
+El síntoma en celular era peor de lo que suena: el encabezado y la barra
+inferior quedaban fuera de la pantalla.
+
+Del mismo modo, el menú lateral cerrado en celular ahora se **oculta**, no solo
+se corre fuera de la vista: si solo se corriera, sus enlaces seguirían
+recibiendo el foco con el teclado y alguien navegando así se perdería en un
+menú que no ve.

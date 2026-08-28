@@ -4,10 +4,12 @@ import { leadsList, leadSources, userMap, usersList } from "@/lib/queries";
 import { formatDate, todayISO, dueLabel, plural } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { STAGE_LABEL, STAGES, type Stage } from "@/lib/types";
-import { Badge, Card, EmptyState, Note, PageHeader, StatCard, type Tone } from "@/components/ui";
+import { Badge, Card, EmptyState, Note, PageHeader, StatCard } from "@/components/ui";
 import ExportButton from "@/components/ExportButton";
+import ContactActions from "@/components/ContactActions";
 import PipelineFilters from "./PipelineFilters";
-import QuickStage from "./QuickStage";
+import PipelineBoard from "./PipelineBoard";
+import ViewToggle from "./ViewToggle";
 import { SOURCE_LABEL, humanize } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,7 @@ export default async function CrmPage({
     source: (sp.source as string) || "todas",
     q: (sp.q as string) || undefined,
   };
+  const vista = sp.vista === "lista" ? "lista" : "tablero";
 
   const leads = await leadsList(filters);
   const users = await userMap();
@@ -98,72 +101,35 @@ export default async function CrmPage({
         <StatCard label="Valor potencial abierto" value={formatMoney(openValue, "USD")} />
       </div>
 
-      {/* Tablero por etapa */}
-      <div className="scroll-x pb-2">
-        <div className="flex min-w-max gap-3">
-          {OPEN_STAGES.map((stage) => {
-            const items = byStage.get(stage) ?? [];
-            const total = items.reduce((a, l) => a + l.potential_value_cents, 0);
-            return (
-              <div key={stage} className="w-64 shrink-0">
-                <div className="mb-2 flex items-baseline justify-between px-1">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-faint">
-                    {STAGE_LABEL[stage]}
-                  </h3>
-                  <span className="tnum text-xs text-muted">{items.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {items.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-faint">
-                      Vacio
-                    </div>
-                  ) : (
-                    items.map((l) => {
-                      const overdue = l.next_action_date !== null && l.next_action_date < today;
-                      const missing = !l.next_action || !l.next_action_date;
-                      const tone: Tone = missing ? "warn" : overdue ? "risk" : "neutral";
-                      return (
-                        <Link
-                          key={l.id}
-                          href={`/crm/${l.id}`}
-                          className="block rounded-lg border border-border bg-surface p-2.5 transition-colors hover:bg-surface-2"
-                        >
-                          <div className="flex items-start justify-between gap-1">
-                            <p className="min-w-0 flex-1 truncate text-sm font-medium">{l.name}</p>
-                            <QuickStage id={l.id} stage={l.stage} />
-                          </div>
-                          {l.company && <p className="truncate text-xs text-muted">{l.company}</p>}
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                            <Badge tone="neutral">{users.get(l.owner_id)?.name ?? "sin responsable"}</Badge>
-                            {l.potential_value_cents > 0 && (
-                              <Badge tone="brand">
-                                {formatMoney(l.potential_value_cents, l.potential_currency)}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className={`mt-1.5 truncate text-xs ${tone === "neutral" ? "text-faint" : tone === "warn" ? "text-warn" : "text-risk"}`}>
-                            {missing
-                              ? "Sin próxima acción"
-                              : `${dueLabel(l.next_action_date, today)} · ${l.next_action}`}
-                          </p>
-                        </Link>
-                      );
-                    })
-                  )}
-                </div>
-                {total > 0 && (
-                  <p className="tnum mt-2 px-1 text-xs text-faint">
-                    Potencial: {formatMoney(total, items[0]?.potential_currency ?? "USD")}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <ViewToggle vista={vista} query={sp} />
+        <p className="text-xs text-faint">
+          {vista === "tablero"
+            ? `${plural(openLeads.length, "oportunidad", "oportunidades")} abiertas`
+            : `${plural(leads.length, "resultado")} en el filtro`}
+        </p>
       </div>
 
-      {/* Listado completo */}
-      <Card className="mt-6" title="Todas las oportunidades del filtro" subtitle={`${plural(leads.length, "resultado")}.`}>
+      {vista === "tablero" ? (
+      <PipelineBoard
+        leads={openLeads.map((l) => ({
+          id: l.id,
+          name: l.name,
+          company: l.company,
+          stage: l.stage,
+          ownerName: users.get(l.owner_id)?.name ?? "sin responsable",
+          nextAction: l.next_action,
+          nextActionLabel: l.next_action_date ? dueLabel(l.next_action_date, today) : "",
+          overdue: l.next_action_date !== null && l.next_action_date < today,
+          missing: !l.next_action || !l.next_action_date,
+          valueCents: l.potential_value_cents,
+          currency: l.potential_currency,
+          phone: l.contact_phone,
+          email: l.contact_email,
+        }))}
+      />
+      ) : (
+      <Card title="Todas las oportunidades del filtro" subtitle={`${plural(leads.length, "resultado")}.`}>
         {leads.length === 0 ? (
           <EmptyState
             title="No hay oportunidades con este filtro"
@@ -180,12 +146,12 @@ export default async function CrmPage({
                 <tr>
                   <th>Nombre</th>
                   <th>Empresa / centro</th>
-                  <th>Especialidad</th>
                   <th>Origen</th>
                   <th>Etapa</th>
                   <th>Responsable</th>
                   <th>Próxima acción</th>
                   <th className="text-right">Valor</th>
+                  <th className="text-right">Contactar</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,13 +159,12 @@ export default async function CrmPage({
                   const overdue = l.next_action_date !== null && l.next_action_date < today && l.outcome === "open";
                   return (
                     <tr key={l.id}>
-                      <td>
+                      <td className="whitespace-nowrap">
                         <Link href={`/crm/${l.id}`} className="font-medium hover:underline">
                           {l.name}
                         </Link>
                       </td>
                       <td className="text-muted">{l.company || "—"}</td>
-                      <td className="text-muted">{l.specialty || "—"}</td>
                       <td className="text-muted">{SOURCE_LABEL[l.source] ?? humanize(l.source)}</td>
                       <td>
                         <Badge
@@ -225,6 +190,16 @@ export default async function CrmPage({
                           ? formatMoney(l.potential_value_cents, l.potential_currency)
                           : "—"}
                       </td>
+                      <td className="whitespace-nowrap text-right">
+                        <ContactActions
+                          leadId={l.id}
+                          nombre={l.name}
+                          empresa={l.company}
+                          telefono={l.contact_phone}
+                          email={l.contact_email}
+                          size="sm"
+                        />
+                      </td>
                     </tr>
                   );
                 })}
@@ -233,10 +208,24 @@ export default async function CrmPage({
           </div>
         )}
       </Card>
+      )}
       <Note>
-        La flecha de cada tarjeta la mueve a la etapa siguiente sin abrir la ficha. Cerrar como
-        ganada o perdida sí requiere abrirla: una venta ganada necesita el cliente cargado y una
-        perdida necesita el motivo.
+        {vista === "tablero" ? (
+          <>
+            El tablero muestra lo que está abierto. En escritorio las tarjetas se arrastran entre
+            columnas; en celular la flecha las manda a la etapa siguiente. Todo movimiento se puede
+            deshacer desde el aviso que aparece abajo. Cerrar como ganada o perdida sí requiere
+            abrir la ficha: una venta ganada necesita el cliente cargado y una perdida el motivo.
+            Los botones de contacto abren WhatsApp, el teléfono o el mail y dejan registrado el
+            intento solos.
+          </>
+        ) : (
+          <>
+            La lista muestra todo lo que entra en el filtro, incluidas las ganadas y las perdidas,
+            y es la vista para buscar y exportar. Para mover oportunidades de etapa arrastrando,
+            volvé al tablero.
+          </>
+        )}
       </Note>
     </>
   );

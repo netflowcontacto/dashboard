@@ -6,14 +6,29 @@ import { formatDate, formatDateTime, todayISO, plural } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { STAGE_LABEL } from "@/lib/types";
 import { Badge, Card, PageHeader } from "@/components/ui";
+import {
+  IconCalendario, IconEmail, IconFlecha, IconNota, IconTelefono, IconWhatsapp,
+} from "@/components/icons";
 import LeadForm from "../LeadForm";
-import { CloseLostForm, CloseWonForm, FollowUpForm, ReopenForm } from "./CloseControls";
+import { CloseLostForm, CloseWonForm, ReopenForm } from "./CloseControls";
+import ActivityComposer from "./ActivityComposer";
+import ContactActions from "@/components/ContactActions";
 import Attachments from "@/components/Attachments";
 import { listAttachments } from "@/actions/attachments";
 import { can } from "@/lib/permissions";
 import { LEAD_EVENT_LABEL, humanize, type Stage } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+/** Un icono por tipo de evento: la bitácora se escanea con la vista. */
+function EventIcon({ type }: { type: string }) {
+  if (type === "llamada") return <IconTelefono size={15} />;
+  if (type === "whatsapp") return <IconWhatsapp size={15} />;
+  if (type === "email") return <IconEmail size={15} />;
+  if (type === "reunion") return <IconCalendario size={15} />;
+  if (type === "cambio_etapa") return <IconFlecha size={15} />;
+  return <IconNota size={15} />;
+}
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -50,6 +65,22 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         {overdue && <Badge tone="risk">Acción vencida ({formatDate(lead.next_action_date)})</Badge>}
         {lead.outcome === "lost" && lead.lost_reason && <Badge tone="risk">Perdida: {lead.lost_reason}</Badge>}
       </div>
+
+      <Card className="mb-4" title="Contactar" padding>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ContactActions
+            leadId={lead.id}
+            nombre={lead.name}
+            empresa={lead.company}
+            telefono={lead.contact_phone}
+            email={lead.contact_email}
+          />
+          <p className="text-xs text-faint">
+            Al abrir cualquiera de estos, el intento queda registrado abajo y se marca el primer
+            contacto.
+          </p>
+        </div>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -88,29 +119,49 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <Attachments kind="lead" ownerId={lead.id} items={attachments} canEdit={puedeAdjuntar} />
           </Card>
 
-          <Card title="Registrar follow-up" subtitle={`${plural(lead.follow_up_count, "follow-up")} ${lead.follow_up_count === 1 ? "registrado" : "registrados"}.`}>
-            <FollowUpForm leadId={lead.id} today={today} />
+          <Card
+            title="Registrar actividad"
+            subtitle="Lo que pasó y qué sigue, en un solo paso."
+          >
+            <ActivityComposer leadId={lead.id} today={today} />
           </Card>
 
-          <Card title="Línea de tiempo">
+          <Card
+            title="Bitácora"
+            subtitle={`${plural(events.length, "movimiento")} · toda la historia de la oportunidad.`}
+          >
             {events.length === 0 ? (
-              <p className="text-sm text-muted">Sin movimientos registrados.</p>
+              <p className="text-sm text-muted">Todavía no hay actividad registrada.</p>
             ) : (
-              <ol className="space-y-2.5">
+              <ol className="space-y-3">
                 {events.map((e) => (
-                  <li key={e.id} className="border-l-2 border-border pl-3">
-                    <p className="text-sm">
-                      {e.type === "cambio_etapa"
-                        ? `${e.from_stage ? `${STAGE_LABEL[e.from_stage as Stage] ?? e.from_stage} → ` : ""}${
-                            STAGE_LABEL[e.to_stage as Stage] ?? e.to_stage
-                          }`
-                        : (LEAD_EVENT_LABEL[e.type] ?? humanize(e.type))}
-                    </p>
-                    {e.detail && <p className="text-xs text-muted">{e.detail}</p>}
-                    <p className="text-xs text-faint">
-                      {formatDateTime(e.at)}
-                      {e.user_name ? ` · ${e.user_name}` : ""}
-                    </p>
+                  <li key={e.id} className="flex gap-2.5">
+                    <span
+                      aria-hidden
+                      className={`mt-0.5 shrink-0 ${
+                        e.type === "cambio_etapa" ? "text-brand-ink" : "text-faint"
+                      }`}
+                    >
+                      <EventIcon type={e.type} />
+                    </span>
+                    <span className="min-w-0 flex-1 border-b border-border pb-2.5 last:border-0">
+                      <span className="block text-sm">
+                        {e.type === "cambio_etapa"
+                          ? `${e.from_stage ? `${STAGE_LABEL[e.from_stage as Stage] ?? e.from_stage} → ` : ""}${
+                              STAGE_LABEL[e.to_stage as Stage] ?? e.to_stage
+                            }`
+                          : (LEAD_EVENT_LABEL[e.type] ?? humanize(e.type))}
+                      </span>
+                      {e.detail && (
+                        <span className="mt-0.5 block whitespace-pre-wrap text-xs text-muted">
+                          {e.detail}
+                        </span>
+                      )}
+                      <span className="mt-0.5 block text-xs text-faint">
+                        {formatDateTime(e.at)}
+                        {e.user_name ? ` · ${e.user_name}` : ""}
+                      </span>
+                    </span>
                   </li>
                 ))}
               </ol>

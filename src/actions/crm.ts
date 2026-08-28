@@ -239,35 +239,6 @@ export async function moveStage(fd: FormData): Promise<void> {
   revalidatePath(`/crm/${id}`);
 }
 
-/** Registra un follow-up y reprograma la próxima acción. */
-export async function logFollowUp(fd: FormData): Promise<void> {
-  const user = await requireUser();
-  if (!can(user, "crm:editar")) return;
-
-  const id = F.int(fd, "id");
-  const detail = F.str(fd, "detail");
-  const nextDate = F.optDate(fd, "next_action_date");
-  const nextAction = F.optStr(fd, "next_action");
-  if (!id) return;
-
-  await tx(async (q) => {
-    await q.run(
-      `INSERT INTO lead_events (lead_id, type, detail, user_id) VALUES (?, 'follow_up', ?, ?)`,
-      [id, detail, user.id],
-    );
-    await q.run("UPDATE leads SET follow_up_count = follow_up_count + 1 WHERE id = ?", [id]);
-    if (nextAction && nextDate) {
-      await q.run(
-        "UPDATE leads SET next_action = ?, next_action_date = ?, updated_at = nf_now() WHERE id = ?",
-        [nextAction, nextDate, id],
-      );
-    }
-  });
-
-  revalidatePath(`/crm/${id}`);
-  revalidatePath("/crm");
-}
-
 /**
  * Cierra la oportunidad como ganada y da de alta el cliente en un solo paso.
  * Así no existe el caso "lead ganado sin cliente cargado", que rompe el CAC
@@ -345,7 +316,7 @@ export async function closeLost(_prev: ActionState, fd: FormData): Promise<Actio
   const id = F.int(fd, "id");
   const reason = F.optStr(fd, "lost_reason");
   if (!id) return { error: "Oportunidad invalida." };
-  if (!reason) return { error: "Indica el motivo de perdida." };
+  if (!reason) return { error: "Indica el motivo de pérdida." };
 
   try {
     await tx(async (q) => {

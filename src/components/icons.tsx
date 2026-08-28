@@ -35,6 +35,13 @@ export const IconFunnel = (p: Props) => (
 export const IconCrm = (p: Props) => (
   <Svg {...p}><path d="M4 4h6v7H4zM14 4h6v11h-6zM4 15h6v5H4zM14 19h6" /></Svg>
 );
+/* Columnas de tablero y filas de lista: los dos modos de ver el pipeline. */
+export const IconTablero = (p: Props) => (
+  <Svg {...p}><path d="M4 4h4.5v16H4zM9.75 4h4.5v11h-4.5zM15.5 4H20v7h-4.5z" /></Svg>
+);
+export const IconLista = (p: Props) => (
+  <Svg {...p}><path d="M4 6h16M4 12h16M4 18h16" /></Svg>
+);
 export const IconClientes = (p: Props) => (
   <Svg {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3 20a6 6 0 0 1 12 0M17 11a2.6 2.6 0 1 0 0-5.2M18 20a5 5 0 0 0-2-4" /></Svg>
 );
@@ -109,6 +116,22 @@ export const IconSalir = (p: Props) => (
 );
 export const IconDescargar = (p: Props) => (
   <Svg {...p}><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4 20h16" /></Svg>
+);
+
+export const IconWhatsapp = (p: Props) => (
+  <Svg {...p}><path d="M3 21l1.7-4.2A8.5 8.5 0 1 1 7.6 19.8z" /><path d="M8.6 9.2c.3 2.6 2.6 5 5.2 5.3l1-1.4 2 .9-.3 1.6c-2.9.5-6.6-2.4-8-5.2l1.4-.5z" /></Svg>
+);
+export const IconTelefono = (p: Props) => (
+  <Svg {...p}><path d="M6.5 3h3l1.5 4-2 1.5a11 11 0 0 0 5 5L15.5 12l4 1.5v3a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 4.5 5.2 2 2 0 0 1 6.5 3z" /></Svg>
+);
+export const IconEmail = (p: Props) => (
+  <Svg {...p}><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="m3.5 7 8.5 6 8.5-6" /></Svg>
+);
+export const IconNota = (p: Props) => (
+  <Svg {...p}><path d="M5 3h9l5 5v13H5z" /><path d="M14 3v5h5M8.5 13h7M8.5 17h4" /></Svg>
+);
+export const IconArrastrar = (p: Props) => (
+  <Svg {...p}><circle cx="9" cy="6" r="1.2" /><circle cx="15" cy="6" r="1.2" /><circle cx="9" cy="12" r="1.2" /><circle cx="15" cy="12" r="1.2" /><circle cx="9" cy="18" r="1.2" /><circle cx="15" cy="18" r="1.2" /></Svg>
 );
 
 export const NAV_ICONS = {

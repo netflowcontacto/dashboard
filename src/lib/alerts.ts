@@ -171,7 +171,9 @@ export async function computeAlerts(asOf = todayISO()): Promise<Alert[]> {
          AND substr(l.proposal_sent_at,1,10) <= ?
          AND NOT EXISTS (
            SELECT 1 FROM lead_events e
-           WHERE e.lead_id = l.id AND e.type = 'follow_up' AND e.at > l.proposal_sent_at
+           WHERE e.lead_id = l.id
+             AND e.type IN ('follow_up','llamada','whatsapp','email','reunion')
+             AND e.at > l.proposal_sent_at
          )`,
       [addDays(asOf, -followUpDays)],
   );

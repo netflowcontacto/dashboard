@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { createLead, updateLead } from "@/actions/crm";
 import type { ActionState } from "@/lib/errors";
 import { ErrorBanner, Field, SuccessBanner } from "@/components/ui";
-import { STAGE_LABEL, STAGES, type Lead, type User } from "@/lib/types";
+import { SOURCE_LABEL, STAGE_LABEL, STAGES, humanize, type Lead, type User } from "@/lib/types";
 
 const SOURCES = [
   "meta_ads", "google_ads", "instagram_ads", "pauta",
@@ -109,7 +109,7 @@ export default function LeadForm({
           <select className="field" name="source" defaultValue={lead?.source ?? "meta_ads"}>
             {SOURCES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {SOURCE_LABEL[s] ?? humanize(s)}
               </option>
             ))}
           </select>
@@ -222,7 +222,7 @@ export default function LeadForm({
           />
         </Field>
         {lead && (
-          <Field label="Motivo de perdida" hint="Obligatorio si el resultado es perdida.">
+          <Field label="Motivo de pérdida" hint="Obligatorio si la oportunidad se cierra como perdida.">
             <input className="field" name="lost_reason" defaultValue={lead.lost_reason ?? ""} />
           </Field>
         )}

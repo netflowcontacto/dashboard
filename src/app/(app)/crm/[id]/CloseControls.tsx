@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { closeLost, closeWon, logFollowUp, reopenLead } from "@/actions/crm";
+import { closeLost, closeWon, reopenLead } from "@/actions/crm";
 import type { ActionState } from "@/lib/errors";
 import { ErrorBanner, Field, SuccessBanner } from "@/components/ui";
 import type { Lead, User } from "@/lib/types";
@@ -14,27 +14,6 @@ function Submit({ label, tone = "primary" }: { label: string; tone?: "primary" |
     <button type="submit" className={cls} disabled={pending}>
       {pending ? "Guardando…" : label}
     </button>
-  );
-}
-
-/** Registrar un follow-up y, de paso, reprogramar la próxima acción. */
-export function FollowUpForm({ leadId, today }: { leadId: number; today: string }) {
-  return (
-    <form action={logFollowUp} className="space-y-3">
-      <input type="hidden" name="id" value={leadId} />
-      <Field label="Que hiciste">
-        <input className="field" name="detail" placeholder="Ej: segundo mensaje por WhatsApp" required />
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Próxima acción">
-          <input className="field" name="next_action" placeholder="Ej: llamar el lunes" />
-        </Field>
-        <Field label="Fecha">
-          <input className="field" type="date" name="next_action_date" defaultValue={today} />
-        </Field>
-      </div>
-      <Submit label="Registrar follow-up" tone="plain" />
-    </form>
   );
 }
 
@@ -141,7 +120,7 @@ export function CloseLostForm({ leadId }: { leadId: number }) {
     <form action={formAction} className="space-y-3">
       <ErrorBanner message={state.error} />
       <input type="hidden" name="id" value={leadId} />
-      <Field label="Motivo de perdida" required hint="Sin motivo no se puede cerrar: es como aprendemos.">
+      <Field label="Motivo de pérdida" required hint="Sin motivo no se puede cerrar: es como aprendemos.">
         <input className="field" name="lost_reason" required autoFocus />
       </Field>
       <div className="flex gap-2">

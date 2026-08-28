@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { can, isAdmin, ROLE_LABEL } from "@/lib/permissions";
 import { alertsFor } from "@/lib/alerts";
 import Nav, { type NavItem } from "@/components/Nav";
+import { ToastProvider } from "@/components/Toast";
 
 /**
  * Shell de la aplicacion.
@@ -58,7 +59,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .filter((i): i is NavItem => Boolean(i));
 
   return (
-    <div className="flex min-h-screen">
+    <ToastProvider>
+      <div className="flex min-h-screen">
       <Nav
         items={items}
         primary={primary}
@@ -66,8 +68,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         alertCount={alertCount}
       />
       <main className="min-w-0 flex-1 px-4 py-6 pb-24 pt-16 md:px-6 md:pb-6 md:pt-6">
-        <div className="mx-auto max-w-7xl">{children}</div>
-      </main>
-    </div>
+          <div className="mx-auto max-w-7xl">{children}</div>
+        </main>
+      </div>
+    </ToastProvider>
   );
 }
