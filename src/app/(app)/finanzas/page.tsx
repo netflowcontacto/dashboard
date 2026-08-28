@@ -7,6 +7,7 @@ import { loadFx } from "@/lib/fx";
 import { clientsList } from "@/lib/queries";
 import { EXPENSE_CATEGORY_LABEL, type Currency, type ExpenseCategory } from "@/lib/types";
 import { previousRange, MONTH_SHORT } from "@/lib/metrics/compare";
+import { METRICS, evaluate, metricContext } from "@/lib/metrics/registry";
 import { Badge, Card, EmptyState, Note, PageHeader, SectionTitle, StatCard, formatPct } from "@/components/ui";
 import { BarList, ColumnsChart, type DeltaValue } from "@/components/charts";
 import RangePicker from "@/components/RangePicker";
@@ -39,6 +40,26 @@ export default async function FinanzasPage({
   const trend = await monthlyTrend(6, range.to);
   const cur = f.currency;
   const today = todayISO();
+
+  // Unit economics. Se piden por clave al registro para que la definición, la
+  // unidad y el "más es mejor" vengan del mismo lugar que las usa el resto del
+  // sistema, y para que agregar una métrica acá no requiera tocar la pantalla.
+  const CLAVES_UNIT = [
+    "cac_pauta",
+    "cac_total",
+    "ltv",
+    "ltv_cac",
+    "payback_meses",
+    "roas_pauta",
+    "roi_pauta",
+    "vida_media_meses",
+  ];
+  const ctx = await metricContext(range);
+  const unit = await Promise.all(
+    CLAVES_UNIT.map((k) => METRICS.find((m) => m.key === k))
+      .filter((m): m is NonNullable<typeof m> => m !== undefined)
+      .map((m) => evaluate(m, ctx)),
+  );
   const prev = previousRange(range);
   const prevFinance = await financeSummary(prev);
   const moneyDelta = (current: number, previous: number, higherIsBetter = true): DeltaValue => ({
@@ -132,6 +153,24 @@ export default async function FinanzasPage({
           value={formatMoney(f.unpaidExpensesCents, cur)}
           tone={f.unpaidExpensesCents > 0 ? "warn" : "neutral"}
         />
+      </div>
+
+      <SectionTitle>Unit economics</SectionTitle>
+      <p className="-mt-1 mb-2.5 max-w-2xl text-xs leading-relaxed text-muted">
+        Cuánto cuesta traer un cliente y cuánto deja. El CAC va en dos versiones a propósito: el
+        de pauta deja afuera referidos y outbound, que no costaron un peso de publicidad, y es el
+        que sirve para decidir cuánto invertir.
+      </p>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {unit.map((m) => (
+          <StatCard
+            key={m.key}
+            label={m.label}
+            value={formatoMetrica(m, cur)}
+            hint={m.value === null ? motivoVacio(m.key) : m.help}
+            tone={tonoDe(m)}
+          />
+        ))}
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -267,4 +306,68 @@ export default async function FinanzasPage({
       </Note>
     </>
   );
+}
+
+/**
+ * Cómo se escribe cada métrica según su unidad.
+ *
+ * LTV/CAC y el recupero son números sueltos y no llevan símbolo; el ROI es
+ * porcentaje; el resto es plata. Sale de la unidad declarada en el registro y
+ * no de una lista escrita a mano acá.
+ */
+function formatoMetrica(
+  m: { unit: string; value: number | null; key: string },
+  moneda: Currency,
+): string {
+  if (m.value === null) return "—";
+  if (m.unit === "moneda") return formatMoney(Math.round(m.value * 100), moneda);
+  if (m.unit === "porcentaje") return formatPct(m.value, 0);
+  if (m.key === "ltv_cac") return `${m.value.toFixed(1)}×`;
+  if (m.key === "payback_meses" || m.key === "vida_media_meses") {
+    return `${m.value.toFixed(1)} ${m.value === 1 ? "mes" : "meses"}`;
+  }
+  return m.value.toFixed(1);
+}
+
+/**
+ * Solo se pinta lo que tiene un umbral con significado del negocio.
+ * LTV/CAC por debajo de 1 es perder plata con cada cliente nuevo; 3 es la
+ * referencia de un modelo sano. El resto queda neutro: colorear un número sin
+ * un umbral atrás es decorar.
+ */
+function tonoDe(m: { key: string; value: number | null }): "ok" | "warn" | "risk" | "neutral" {
+  if (m.value === null) return "neutral";
+  if (m.key === "ltv_cac") return m.value >= 3 ? "ok" : m.value >= 1 ? "warn" : "risk";
+  if (m.key === "roi_pauta") return m.value > 0 ? "ok" : "risk";
+  return "neutral";
+}
+
+/**
+ * Por qué una métrica no tiene número todavía.
+ *
+ * Un "—" solo parece un error del sistema. Estas cifras se apagan por razones
+ * concretas del negocio —no hubo cierres de pauta, todavía no se dio de baja
+ * nadie— y decirlo convierte un hueco en información: la mitad de las veces
+ * el mensaje es la respuesta que la persona vino a buscar.
+ */
+function motivoVacio(key: string): string {
+  switch (key) {
+    case "cac_pauta":
+      return "Ningún cliente del período vino de un lead de pauta. Los referidos y el outbound no cuentan acá.";
+    case "cac_total":
+      return "No se cerró ningún cliente en el período.";
+    case "vida_media_meses":
+      return "Todavía no se dio de baja ningún cliente, así que no hay con qué calcular la duración promedio.";
+    case "ltv":
+      return "Necesita la vida media del cliente y el margen bruto del período.";
+    case "ltv_cac":
+      return "Necesita el LTV y el CAC de pauta.";
+    case "payback_meses":
+      return "Necesita el CAC de pauta y el margen bruto.";
+    case "roas_pauta":
+    case "roi_pauta":
+      return "Las oportunidades de pauta del período todavía no se resolvieron, o no hay inversión cargada. Cuando alguna cierre o se pierda aparece el número.";
+    default:
+      return "Sin datos suficientes en el período.";
+  }
 }

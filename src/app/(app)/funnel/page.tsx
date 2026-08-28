@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { resolveRange, formatDate, plural } from "@/lib/dates";
+import { METRICS, evaluate, metricContext } from "@/lib/metrics/registry";
 import { computeFunnel, leadsBySource } from "@/lib/metrics/funnel";
 import { findBottleneck } from "@/lib/metrics/overview";
 import { formatMoney } from "@/lib/money";
@@ -36,6 +37,14 @@ export default async function FunnelPage({
   });
 
   const f = await computeFunnel(range);
+
+  // El CAC sale del registro de métricas y no del funnel: así tiene definición,
+  // se puede fijar como objetivo y se compara contra el período anterior igual
+  // que cualquier otra. El de pauta —y no el total— es el que va acá, porque
+  // esta pantalla habla de lo que produce la inversión publicitaria.
+  const ctxMetricas = await metricContext(range);
+  const defCac = METRICS.find((m) => m.key === "cac_pauta")!;
+  const cacPauta = await evaluate(defCac, ctxMetricas);
   const sources = await leadsBySource(range);
   const bottleneck = findBottleneck(f);
   const cur = f.currency;
@@ -69,9 +78,9 @@ export default async function FunnelPage({
           hint="Menos es mejor"
         />
         <StatCard
-          label="CAC"
-          value={f.rates.cacCents !== null ? formatMoney(f.rates.cacCents, cur) : "—"}
-          hint="Inversión / clientes cerrados en el período"
+          label="CAC de pauta"
+          value={cacPauta.value !== null ? formatMoney(Math.round(cacPauta.value * 100), cur) : "—"}
+          hint={cacPauta.help}
         />
       </div>
 

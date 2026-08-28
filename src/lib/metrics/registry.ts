@@ -84,6 +84,59 @@ async function paidSourceFilter(): Promise<{ sql: string; params: string[][] }> 
   return { sql: " AND source = ANY(?)", params: [sources] };
 }
 
+/** Suma de una categoría de gasto en el rango, en moneda base. */
+async function moneyFromExpenses(
+  range: DateRange,
+  fx: Fx,
+  category: string,
+): Promise<number> {
+  const rows = await all<{ cents: number; currency: Currency }>(
+    `SELECT amount_cents AS cents, currency FROM expenses
+      WHERE category = ? AND date BETWEEN ? AND ?`,
+    [category, range.from, range.to],
+  );
+  return moneyMajor(rows, fx);
+}
+
+/**
+ * Margen bruto del período, en porcentaje.
+ *
+ * Es facturado menos costos directos sobre facturado. Vive acá y no en
+ * `finance.ts` para que las métricas de unit economics no dependan del módulo
+ * financiero entero, que trae caja, runway y proyecciones.
+ */
+async function margenBrutoPct({ range, fx }: MetricContext): Promise<number | null> {
+  const [facturado, directos] = await Promise.all([
+    all<{ cents: number; currency: Currency }>(
+      `SELECT amount_cents AS cents, currency FROM invoices
+        WHERE issued_at BETWEEN ? AND ? AND status <> 'incobrable'`,
+      [range.from, range.to],
+    ),
+    all<{ cents: number; currency: Currency }>(
+      `SELECT amount_cents AS cents, currency FROM expenses
+        WHERE direct_cost = 1 AND date BETWEEN ? AND ?`,
+      [range.from, range.to],
+    ),
+  ]);
+
+  const ingresos = moneyMajor(facturado, fx);
+  if (ingresos <= 0) return null;
+  return ((ingresos - moneyMajor(directos, fx)) / ingresos) * 100;
+}
+
+/**
+ * Calcula otra métrica por su clave.
+ *
+ * Las de unit economics se apoyan unas en otras —el LTV necesita la vida
+ * media, el payback necesita el CAC— y esto evita duplicar la consulta en
+ * cada una. Devuelve null si la clave no existe, para que un error de tipeo
+ * no tumbe la pantalla.
+ */
+async function computeKey(key: string, ctx: MetricContext): Promise<number | null> {
+  const def = METRICS.find((m) => m.key === key);
+  return def ? def.compute(ctx) : null;
+}
+
 // --- métricas comerciales --------------------------------------------------
 
 const commercial: MetricDef[] = [
@@ -718,8 +771,224 @@ const empresa: MetricDef[] = [
   },
 ];
 
+/**
+ * Unit economics: cuánto cuesta traer un cliente y cuánto deja.
+ *
+ * Se registran como métricas de verdad —y no como un número suelto de una
+ * pantalla— para que se puedan fijar como objetivo del mes, comparar contra el
+ * período anterior y tener su definición al lado de la cifra, igual que
+ * cualquier otra.
+ *
+ * El CAC se parte en dos a propósito. El que había antes dividía TODA la
+ * inversión publicitaria por TODOS los clientes cerrados, incluidos los
+ * referidos y los de outbound, que no costaron un peso de pauta. Ese número
+ * miente hacia abajo cuando entra un referido y hacia arriba cuando no entra
+ * ninguno, y es el que se usa para decidir cuánto invertir.
+ */
+const unitEconomics: MetricDef[] = [
+  {
+    key: "cac_pauta",
+    label: "CAC de pauta",
+    unit: "moneda",
+    scope: "empresa",
+    higherIsBetter: false,
+    help:
+      "Inversión publicitaria dividida por los clientes que vinieron de un lead de pauta. " +
+      "Deja afuera referidos y outbound, que no costaron pauta. Es el número con el que se " +
+      "decide cuánto invertir.",
+    compute: async ({ range, fx }) => {
+      const inversion = await moneyFromExpenses(range, fx, "paid_media");
+      const s = await paidSourceFilter();
+      const clientes = await count(
+        `SELECT COUNT(DISTINCT l.client_id) AS n
+           FROM leads l
+          WHERE l.outcome = 'won' AND l.client_id IS NOT NULL
+            AND substr(l.closed_at,1,10) BETWEEN ? AND ?${s.sql}`,
+        [range.from, range.to, ...s.params],
+      );
+      return clientes > 0 ? inversion / clientes : null;
+    },
+  },
+  {
+    key: "cac_total",
+    label: "CAC total",
+    unit: "moneda",
+    scope: "empresa",
+    higherIsBetter: false,
+    help:
+      "Inversión publicitaria dividida por TODOS los clientes cerrados, vengan de donde vengan. " +
+      "Siempre es más bajo que el CAC de pauta: baja cada vez que entra un referido. Sirve para " +
+      "mirar el costo del crecimiento en conjunto, no para decidir la inversión.",
+    compute: async ({ range, fx }) => {
+      const inversion = await moneyFromExpenses(range, fx, "paid_media");
+      const clientes = await count(
+        `SELECT COUNT(*) AS n FROM clients WHERE start_date BETWEEN ? AND ?`,
+        [range.from, range.to],
+      );
+      return clientes > 0 ? inversion / clientes : null;
+    },
+  },
+  {
+    key: "vida_media_meses",
+    label: "Vida media del cliente",
+    unit: "numero",
+    scope: "empresa",
+    higherIsBetter: true,
+    help:
+      "Cuántos meses dura un cliente en promedio. Se calcula sobre los que ya se dieron de baja; " +
+      "mientras no haya ninguna baja se estima como 1 dividido la tasa de bajas del mes, que con " +
+      "pocos meses de historia es un número ruidoso.",
+    compute: async ({ range }) => {
+      const cerrados = await one<{ meses: number | null }>(
+        `SELECT AVG(
+                  (to_date(churned_at,'YYYY-MM-DD') - to_date(start_date,'YYYY-MM-DD'))::numeric / 30.4375
+                ) AS meses
+           FROM clients WHERE churned_at IS NOT NULL`,
+      );
+      if (cerrados?.meses) return Number(cerrados.meses);
+
+      // Sin bajas todavía: se estima con la tasa del período.
+      const activos = await count(
+        `SELECT COUNT(*) AS n FROM clients
+          WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
+        [range.to, range.to],
+      );
+      const bajas = await count(
+        `SELECT COUNT(*) AS n FROM clients WHERE churned_at BETWEEN ? AND ?`,
+        [range.from, range.to],
+      );
+      if (activos === 0 || bajas === 0) return null;
+      return activos / bajas;
+    },
+  },
+  {
+    key: "ltv",
+    label: "LTV estimado",
+    unit: "moneda",
+    scope: "empresa",
+    higherIsBetter: true,
+    sensitive: true,
+    help:
+      "Cuánto deja un cliente a lo largo de toda su vida, en margen y no en facturación: " +
+      "fee promedio × margen bruto × vida media en meses. Es una estimación y depende de la " +
+      "vida media, que con pocos meses de datos todavía se mueve mucho.",
+    compute: async (ctx) => {
+      const [arpa, vida, margen] = await Promise.all([
+        computeKey("mrr_total", ctx),
+        computeKey("vida_media_meses", ctx),
+        margenBrutoPct(ctx),
+      ]);
+      const activos = await count(
+        `SELECT COUNT(*) AS n FROM clients
+          WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
+        [ctx.range.to, ctx.range.to],
+      );
+      if (arpa === null || vida === null || margen === null || activos === 0) return null;
+      return (arpa / activos) * (margen / 100) * vida;
+    },
+  },
+  {
+    key: "ltv_cac",
+    label: "LTV / CAC",
+    unit: "numero",
+    scope: "empresa",
+    higherIsBetter: true,
+    sensitive: true,
+    help:
+      "Cuántas veces se recupera lo que cuesta traer un cliente. Por debajo de 1 se pierde plata " +
+      "con cada cliente nuevo; 3 o más es la referencia de un modelo sano.",
+    compute: async (ctx) => {
+      const [ltv, cac] = await Promise.all([computeKey("ltv", ctx), computeKey("cac_pauta", ctx)]);
+      if (ltv === null || cac === null || cac <= 0) return null;
+      return ltv / cac;
+    },
+  },
+  {
+    key: "payback_meses",
+    label: "Recupero del CAC",
+    unit: "numero",
+    scope: "empresa",
+    higherIsBetter: false,
+    sensitive: true,
+    help:
+      "Cuántos meses tarda un cliente en devolver lo que costó traerlo. Es la métrica de caja: " +
+      "un LTV/CAC alto con un recupero de diez meses igual asfixia.",
+    compute: async (ctx) => {
+      const [cac, mrr, margen] = await Promise.all([
+        computeKey("cac_pauta", ctx),
+        computeKey("mrr_total", ctx),
+        margenBrutoPct(ctx),
+      ]);
+      const activos = await count(
+        `SELECT COUNT(*) AS n FROM clients
+          WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
+        [ctx.range.to, ctx.range.to],
+      );
+      if (cac === null || mrr === null || margen === null || activos === 0) return null;
+      const margenMensual = (mrr / activos) * (margen / 100);
+      return margenMensual > 0 ? cac / margenMensual : null;
+    },
+  },
+  {
+    key: "roas_pauta",
+    label: "ROAS de pauta",
+    unit: "numero",
+    scope: "empresa",
+    higherIsBetter: true,
+    sensitive: true,
+    help:
+      "Por cada peso de pauta, cuántos vuelven en fee el primer mes. Se calcula con los cierres " +
+      "del CRM, no con lo que reporta la plataforma. Queda vacío mientras las oportunidades de " +
+      "pauta del período todavía no se hayan resuelto: cero cierres pendientes no es lo mismo " +
+      "que cero retorno.",
+    compute: async ({ range, fx }) => {
+      const inversion = await moneyFromExpenses(range, fx, "paid_media");
+      if (inversion <= 0) return null;
+
+      const s = await paidSourceFilter();
+      const filas = await all<{ cents: number; currency: Currency }>(
+        `SELECT c.fee_cents AS cents, c.fee_currency AS currency
+           FROM leads l JOIN clients c ON c.id = l.client_id
+          WHERE l.outcome = 'won' AND substr(l.closed_at,1,10) BETWEEN ? AND ?${s.sql}`,
+        [range.from, range.to, ...s.params],
+      );
+      const revenue = moneyMajor(filas, fx);
+      if (revenue > 0) return revenue / inversion;
+
+      // Sin ingresos de pauta hay dos situaciones muy distintas y no se pueden
+      // decir con el mismo número. Si las oportunidades siguen abiertas, el
+      // retorno todavía no se sabe y un "0" lo leería cualquiera como que se
+      // perdió toda la inversión. Si ya se resolvieron y ninguna cerró,
+      // entonces sí: el retorno del período fue cero.
+      const resueltas = await count(
+        `SELECT COUNT(*) AS n FROM leads
+          WHERE outcome IN ('won','lost') AND substr(closed_at,1,10) BETWEEN ? AND ?${s.sql}`,
+        [range.from, range.to, ...s.params],
+      );
+      return resueltas > 0 ? 0 : null;
+    },
+  },
+  {
+    key: "roi_pauta",
+    label: "ROI de pauta",
+    unit: "porcentaje",
+    scope: "empresa",
+    higherIsBetter: true,
+    sensitive: true,
+    help:
+      "Lo mismo que el ROAS pero dicho como ganancia: (lo que volvió − lo invertido) / lo invertido. " +
+      "0% es empatar. Vale la pena mirarlo junto al ROAS porque 'ROAS 1,2' suena bien y son 20% " +
+      "de retorno antes de cualquier otro costo.",
+    compute: async (ctx) => {
+      const roas = await computeKey("roas_pauta", ctx);
+      return roas === null ? null : (roas - 1) * 100;
+    },
+  },
+];
+
 export const METRICS: MetricDef[] = [
   ...empresa,
+  ...unitEconomics,
   ...commercial,
   ...setter,
   ...paidMedia,
