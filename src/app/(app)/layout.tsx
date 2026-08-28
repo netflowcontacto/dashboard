@@ -46,14 +46,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     items.push({ href: "/integraciones", label: "Integraciones", group: "Administración" });
   }
 
+  /**
+   * Los cuatro destinos de la barra inferior en celular. No son los primeros
+   * del menú: el menú está ordenado por tema y esto por uso diario.
+   */
+  const primaryHrefs = admin
+    ? ["/resumen", "/crm", "/tareas", "/alertas"]
+    : ["/mi-panel", "/crm", "/tareas", "/alertas"];
+  const primary = primaryHrefs
+    .map((href) => items.find((i) => i.href === href))
+    .filter((i): i is NavItem => Boolean(i));
+
   return (
     <div className="flex min-h-screen">
       <Nav
         items={items}
+        primary={primary}
         user={{ name: user.name, role: ROLE_LABEL[user.role], jobTitle: user.job_title }}
         alertCount={alertCount}
       />
-      <main className="min-w-0 flex-1 px-4 py-6 pt-16 md:px-6 md:pt-6">
+      <main className="min-w-0 flex-1 px-4 py-6 pb-24 pt-16 md:px-6 md:pb-6 md:pt-6">
         <div className="mx-auto max-w-7xl">{children}</div>
       </main>
     </div>

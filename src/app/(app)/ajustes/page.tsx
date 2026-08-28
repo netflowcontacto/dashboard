@@ -5,8 +5,17 @@ import { usersList } from "@/lib/queries";
 import { METRICS } from "@/lib/metrics/registry";
 import { Card, PageHeader } from "@/components/ui";
 import { FxForm, OperationalForm, UserForm } from "./SettingsForms";
+import { AREA_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+/** La unidad de una métrica, en castellano. */
+const UNIT_LABEL: Record<string, string> = {
+  numero: "Cantidad",
+  porcentaje: "Porcentaje",
+  moneda: "Importe",
+  horas: "Horas",
+};
 
 export default async function AjustesPage() {
   const user = await requireAdminOr404();
@@ -70,8 +79,10 @@ export default async function AjustesPage() {
                     {m.help && <p className="text-xs text-muted">{m.help}</p>}
                   </td>
                   <td className="font-mono text-xs text-faint">{m.key}</td>
-                  <td className="text-muted">{m.scope}</td>
-                  <td className="text-muted">{m.unit}</td>
+                  <td className="text-muted">
+                    {m.scope === "empresa" ? "Empresa" : AREA_LABEL[m.scope]}
+                  </td>
+                  <td className="text-muted">{UNIT_LABEL[m.unit]}</td>
                   <td className="text-muted">{m.higherIsBetter ? "mas es mejor" : "menos es mejor"}</td>
                 </tr>
               ))}

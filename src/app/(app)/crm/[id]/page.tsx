@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { leadById, leadEvents, usersList, userMap } from "@/lib/queries";
-import { formatDate, formatDateTime, todayISO } from "@/lib/dates";
+import { formatDate, formatDateTime, todayISO, plural } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { STAGE_LABEL } from "@/lib/types";
 import { Badge, Card, PageHeader } from "@/components/ui";
@@ -88,7 +88,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <Attachments kind="lead" ownerId={lead.id} items={attachments} canEdit={puedeAdjuntar} />
           </Card>
 
-          <Card title="Registrar follow-up" subtitle={`${lead.follow_up_count} follow-up(s) registrados.`}>
+          <Card title="Registrar follow-up" subtitle={`${plural(lead.follow_up_count, "follow-up")} ${lead.follow_up_count === 1 ? "registrado" : "registrados"}.`}>
             <FollowUpForm leadId={lead.id} today={today} />
           </Card>
 

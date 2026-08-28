@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import CommandPalette from "./CommandPalette";
 import ThemeToggle from "./ThemeToggle";
-import { IconCerrar, IconMenu, IconSalir, NAV_ICONS } from "./icons";
+import BottomNav from "./BottomNav";
+import { IconCerrar, IconSalir, NAV_ICONS } from "./icons";
 
 export interface NavItem {
   href: string;
@@ -19,10 +20,13 @@ export interface NavItem {
  */
 export default function Nav({
   items,
+  primary,
   user,
   alertCount,
 }: {
   items: NavItem[];
+  /** Los cuatro destinos de la barra inferior en celular. */
+  primary: NavItem[];
   user: { name: string; role: string; jobTitle: string };
   alertCount: number;
 }) {
@@ -44,36 +48,38 @@ export default function Nav({
 
   return (
     <>
-      {/* Barra superior solo en móvil */}
-      <header className="fixed inset-x-0 top-0 z-40 flex items-center gap-2 border-b border-border bg-surface px-3 py-2 md:hidden">
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls="nav-principal"
-          aria-label={open ? "Cerrar menú" : "Abrir menú"}
+      {/* Barra superior solo en móvil: identidad y buscador. La navegación
+          vive abajo, en la zona del pulgar. */}
+      <header className="fixed inset-x-0 top-0 z-30 flex items-center gap-2 border-b border-border bg-surface px-3 py-2 md:hidden">
+        <span
+          aria-hidden
+          className="grid size-7 shrink-0 place-items-center rounded-lg text-sm font-bold text-white"
+          style={{ background: "var(--brand)" }}
         >
-          {open ? <IconCerrar size={18} /> : <IconMenu size={18} />}
-        </button>
+          N
+        </span>
         <span className="font-semibold tracking-tight">NetFlow</span>
-        {alertCount > 0 && (
-          <Link href="/alertas" className="ml-auto">
-            <span className="rounded-full bg-risk px-1.5 py-0.5 text-[0.65rem] font-semibold text-white">
-              {alertCount > 99 ? "99+" : alertCount}
-            </span>
-          </Link>
-        )}
+        <div className="ml-auto w-40">
+          <CommandPalette links={items.map((i) => ({ href: i.href, label: i.label, group: i.group }))} />
+        </div>
       </header>
 
       <nav
         id="nav-principal"
         aria-label="Navegación principal"
-        className={`fixed inset-y-0 left-0 z-40 flex w-60 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r border-border bg-surface transition-transform duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="border-b border-border px-3 py-3">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="btn btn-ghost btn-sm absolute right-2 top-2 md:hidden"
+            aria-label="Cerrar menú"
+          >
+            <IconCerrar size={18} />
+          </button>
           <Link href="/" className="mb-3 flex items-center gap-2 px-1">
             <span
               aria-hidden
@@ -158,6 +164,8 @@ export default function Nav({
           aria-hidden
         />
       )}
+
+      <BottomNav items={primary} alertCount={alertCount} onOpenMenu={() => setOpen(true)} />
     </>
   );
 }

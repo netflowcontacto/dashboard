@@ -49,7 +49,7 @@ export default function ThemeToggle() {
           onClick={() => apply(value)}
           aria-pressed={theme === value}
           title={label}
-          className={`rounded-md p-1.5 transition-colors ${
+          className={`grid min-h-10 min-w-10 place-items-center rounded-md transition-colors ${
             theme === value ? "bg-surface-3 text-text" : "text-faint hover:text-text"
           }`}
         >

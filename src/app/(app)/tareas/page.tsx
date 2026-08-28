@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { all } from "@/lib/db";
 import { clientsList, usersList, userMap } from "@/lib/queries";
-import { formatDate, todayISO } from "@/lib/dates";
+import { formatDate, todayISO, dueLabel } from "@/lib/dates";
 import { Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui";
 import TaskForm from "./TaskForm";
 import TaskToggle from "./TaskToggle";
@@ -135,7 +135,9 @@ export default async function TareasPage({
                         {t.assignee_id ? (users.get(t.assignee_id)?.name ?? "—") : "—"}
                       </td>
                       <td className="text-muted">{t.client_name ?? "—"}</td>
-                      <td className={isOverdue ? "text-risk" : "text-muted"}>{formatDate(t.due_date)}</td>
+                      <td className={isOverdue ? "text-risk" : "text-muted"} title={formatDate(t.due_date)}>
+                        {t.due_date ? dueLabel(t.due_date, today) : "—"}
+                      </td>
                       <td className="text-muted">{PRIORITY_LABEL[t.priority] ?? humanize(t.priority)}</td>
                       <td>
                         <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>{TASK_STATUS_LABEL[t.status] ?? humanize(t.status)}</Badge>

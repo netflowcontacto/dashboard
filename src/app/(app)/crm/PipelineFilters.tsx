@@ -25,9 +25,29 @@ export default function PipelineFilters({
     startTransition(() => router.push(`${pathname}?${sp.toString()}`));
   }
 
+  const activos = [
+    current.q,
+    current.stage !== "todas" ? current.stage : "",
+    current.owner,
+    current.source !== "todas" ? current.source : "",
+  ].filter(Boolean).length;
+
   return (
+    <details className="filtros mb-4 rounded-xl border border-border bg-surface md:border-0 md:bg-transparent">
+      <summary className="flex min-h-11 cursor-pointer items-center justify-between px-3 py-2.5 text-sm font-medium marker:content-[''] [&::-webkit-details-marker]:hidden">
+        <span>
+          Filtros
+          {activos > 0 && (
+            <span className="ml-2 rounded-md bg-brand-soft px-1.5 py-0.5 text-xs text-brand-ink">
+              {activos}
+            </span>
+          )}
+        </span>
+        <span aria-hidden className="text-faint">▾</span>
+      </summary>
+      <div className="filtros-cuerpo border-t border-border p-3 md:border-0 md:p-0">
     <form
-      className="mb-4 flex flex-wrap items-end gap-2"
+      className="flex flex-wrap items-end gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         const value = new FormData(e.currentTarget).get("q");
@@ -97,5 +117,7 @@ export default function PipelineFilters({
         Buscar
       </button>
     </form>
+      </div>
+    </details>
   );
 }

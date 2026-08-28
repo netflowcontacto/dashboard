@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { resolveRange, formatDate } from "@/lib/dates";
+import { resolveRange, formatDate, plural } from "@/lib/dates";
 import { computeFunnel, leadsBySource } from "@/lib/metrics/funnel";
 import { findBottleneck } from "@/lib/metrics/overview";
 import { formatMoney } from "@/lib/money";

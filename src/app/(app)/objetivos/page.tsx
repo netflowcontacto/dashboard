@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { monthOf, todayISO, formatPeriod } from "@/lib/dates";
+import { monthOf, todayISO, formatPeriod, plural } from "@/lib/dates";
 import {
   activeUsers, areaProgress, companyProgress, daysLeftInPeriod, listObjectives,
   periodElapsedPct, personProgress, progressFor, type ObjectiveProgress,
@@ -120,7 +120,7 @@ export default async function ObjetivosPage({
     <>
       <PageHeader
         title="Objetivos"
-        description={`${formatPeriod(period)} · ${daysLeft} día(s) restantes · ${Math.round(elapsed)}% del período transcurrido.`}
+        description={`${formatPeriod(period)} · ${plural(daysLeft, "día")} ${daysLeft === 1 ? "restante" : "restantes"} · ${Math.round(elapsed)}% del período transcurrido.`}
       >
         <form className="flex items-end gap-2">
           <input

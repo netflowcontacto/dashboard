@@ -313,7 +313,7 @@ const paidMedia: MetricDef[] = [
     unit: "moneda",
     scope: "paid_media",
     higherIsBetter: true,
-    help: "Gastos de categoría Paid Media en el período. Fuente única compartida con Finanzas.",
+    help: "Todo lo cargado como inversión publicitaria en el período. Es el mismo número que alimenta el CPL y el CAC.",
     compute: async ({ range, fx }) => {
       const rows = await all<{ cents: number; currency: Currency }>(
         `SELECT amount_cents AS cents, currency FROM expenses

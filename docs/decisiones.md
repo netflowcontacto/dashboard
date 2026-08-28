@@ -258,3 +258,70 @@ Se resuelve con `scripts/postbuild.mjs`, que barre el build y quita cualquier ar
 base. **No** con `outputFileTracingExcludes`: esa opción, con la clave `"*"`, sobre-excluye
 y deja afuera módulos internos de Next, y el servidor standalone deja de arrancar. Se
 probó, se rompió, y por eso está resuelto de la otra forma.
+
+---
+
+## 17. Una barra de navegación abajo, no un menú arriba
+
+El equipo abre esto desde el celular, con una mano y en el medio de otra cosa.
+Un menú hamburguesa arriba a la izquierda es la esquina más incómoda de
+alcanzar con el pulgar; una barra fija abajo queda justo donde el dedo ya está.
+
+Van cuatro destinos y "Más". Cuatro y no seis porque a partir de ahí cada
+botón baja de los 44px que recomiendan las guías de Apple y de Material, y
+errarle a un botón con una mano es peor que un toque de más.
+
+Los cuatro no son los primeros del menú lateral: ese está ordenado por tema y
+la barra por uso diario. Para el equipo son Panel, CRM, Tareas y Alertas.
+
+## 18. "Por dónde empezar hoy", arriba de todo
+
+Un panel lleno de tarjetas **informa**, pero no **dirige**. Alguien entra,
+ve nueve indicadores y sigue sin saber qué hacer primero.
+
+Ahora lo primero que aparece es una lista corta de lo que hay que mover hoy,
+ordenada por lo que más cuesta dejar pasar: leads sin contactar, reuniones de
+hoy y mañana, acciones vencidas, tareas del día. Cada una lleva a su ficha.
+
+Muestra pocas cosas a propósito. Una lista de veinte pendientes no se lee: se
+ignora. Cuando no hay nada urgente lo dice, en vez de mostrar una lista vacía.
+
+## 19. Fechas en lenguaje humano
+
+"28/08/2026" obliga a hacer la cuenta mentalmente. "vence hoy" se lee de un
+vistazo. En una lista de veinte oportunidades esa diferencia es la que hace
+que alguien detecte lo urgente sin leer fila por fila.
+
+La fecha exacta sigue estando en el `title` de cada elemento, para cuando hace
+falta precisión.
+
+## 20. Formularios que se abren por partes
+
+La ficha de oportunidad tenía veinte campos de golpe. Un formulario así hace
+que la gente cargue mal o directamente no cargue, que es el motivo más común
+por el que se abandona un CRM.
+
+Ahora arriba queda lo mínimo para que la oportunidad exista y sea accionable
+—nombre, responsable, próxima acción y fecha— y el resto se abre solo si hace
+falta: datos de contacto, reunión, oferta y valor.
+
+Se usa `<details>` nativo: funciona sin JavaScript, el navegador ya sabe cómo
+comportarse y es accesible por teclado sin escribir nada.
+
+Los filtros del CRM siguen la misma idea: plegados en celular, siempre
+abiertos en escritorio, con el mismo marcado.
+
+## 21. Cuidado con los identificadores al corregir tildes
+
+Acentuar el castellano de la interfaz rompió cosas tres veces, siempre igual:
+una palabra que además era **una clave de código**.
+
+- `'atencion'` y `'correccion'` son valores de un `CHECK` de la base: al
+  acentuarlos, los `INSERT` empezaron a fallar.
+- `"/inversion"` es una ruta: acentuada, el enlace daba 404.
+- `numero:` era la clave de un mapa de traducción: acentuada, la búsqueda
+  fallaba y la pantalla mostraba `numero` crudo al usuario.
+
+La regla que quedó: **el texto que se lee lleva tilde; la clave que se compara,
+nunca.** Y la verificación que lo detecta es leer el HTML renderizado de todas
+las pantallas y buscar palabras sin tilde, en vez de revisar el código.

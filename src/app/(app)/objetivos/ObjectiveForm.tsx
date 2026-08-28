@@ -25,7 +25,7 @@ function Submit({ label }: { label: string }) {
 }
 
 const UNIT_HINT: Record<string, string> = {
-  número: "cantidad",
+  numero: "cantidad",
   porcentaje: "porcentaje (0-100)",
   moneda: "importe en la moneda base",
   horas: "horas",
@@ -122,7 +122,7 @@ export default function ObjectiveForm({
             required
             hint={
               selected
-                ? `${UNIT_HINT[selected.unit] ?? selected.unit}${selected.higherIsBetter ? "" : " · mas bajo es mejor"}`
+                ? `${UNIT_HINT[selected.unit] ?? selected.unit}${selected.higherIsBetter ? "" : " · más bajo es mejor"}`
                 : undefined
             }
           >

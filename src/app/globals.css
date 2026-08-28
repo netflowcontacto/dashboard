@@ -270,6 +270,34 @@
   .scroll-x {
     overflow-x: auto;
     scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /*
+   * Filtros plegables en celular, siempre abiertos en escritorio.
+   * Se sobrescribe el estilo del navegador para <details> cerrado: así el
+   * mismo marcado sirve para los dos casos sin duplicar componentes.
+   */
+  @media (min-width: 768px) {
+    details.filtros > summary { display: none; }
+    details.filtros > .filtros-cuerpo { display: block; }
+  }
+
+  /*
+   * En pantallas táctiles todo lo que se toca mide al menos 44px de alto.
+   * Es la guía de Apple y de Material, y la diferencia entre errarle a un
+   * botón o no cuando estás con una mano en el celular.
+   */
+  @media (pointer: coarse) {
+    .btn,
+    .field,
+    nav a,
+    table.nf td a {
+      min-height: 44px;
+    }
+    .btn { padding-block: 0.7rem; }
+    .btn-sm { min-height: 38px; padding-block: 0.45rem; }
+    nav a { align-items: center; }
   }
 
   /* Barra de progreso: la pista es un paso mas claro de la misma rampa, para

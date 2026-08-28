@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireAdminOr404 } from "@/lib/auth";
-import { resolveRange, formatPeriod, formatDate, monthOf, todayISO } from "@/lib/dates";
+import { resolveRange, formatPeriod, formatDate, monthOf, todayISO, plural } from "@/lib/dates";
 import { buildOverview } from "@/lib/metrics/overview";
 import { daysLeftInPeriod } from "@/lib/metrics/objectives";
 import { compareMetrics, metricHistory, previousRange } from "@/lib/metrics/compare";
@@ -113,7 +113,7 @@ export default async function ResumenPage({
               </>
             }
             delta={toDelta("clientes_nuevos")}
-            sub={`Faltan ${o.headline.missing ?? 0} · quedan ${daysLeft} día(s) del mes`}
+            sub={`Faltan ${o.headline.missing ?? 0} · quedan ${plural(daysLeft, "día")} del mes`}
           >
             <div className="mb-1.5 flex justify-between text-xs">
               <span className={o.headline.onTrack ? "font-medium text-ok" : "font-medium text-risk"}>
@@ -202,7 +202,7 @@ export default async function ResumenPage({
           label="Reuniones realizadas"
           value={o.funnel.activity.reunionesRealizadas}
           href="/funnel"
-          hint={`${o.funnel.activity.propuestas} propuesta(s) enviada(s)`}
+          hint={`${plural(o.funnel.activity.propuestas, "propuesta")} ${o.funnel.activity.propuestas === 1 ? "enviada" : "enviadas"}`}
         />
         <StatCard
           label="CAC"

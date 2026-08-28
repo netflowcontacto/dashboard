@@ -132,7 +132,7 @@ export default function CommandPalette({ links }: { links: QuickLink[] }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-left text-xs text-faint transition-colors hover:border-border-strong hover:text-muted"
+        className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-border bg-surface-2 px-2.5 py-2 text-left text-xs text-faint transition-colors hover:border-border-strong hover:text-muted"
       >
         <IconBuscar size={14} />
         <span className="flex-1">Buscar…</span>

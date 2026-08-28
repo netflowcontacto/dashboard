@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { all, one } from "@/lib/db";
-import { resolveRange, monthOf, formatPeriod, formatDate, formatDateTime, todayISO, addDays } from "@/lib/dates";
+import { resolveRange, monthOf, formatPeriod, formatDate, formatDateTime, todayISO, addDays, dueLabel, relativeDate, plural } from "@/lib/dates";
 import { performanceFor } from "@/lib/metrics/team";
 import { areaProgress, companyProgress, periodElapsedPct, headlineObjective } from "@/lib/metrics/objectives";
 import { areaMetrics } from "@/lib/metrics/team";
@@ -11,6 +11,8 @@ import { loadFx } from "@/lib/fx";
 import { AREA_LABEL } from "@/lib/types";
 import { Badge, Card, EmptyState, PageHeader, ProgressBar, StatCard, formatMetric, formatPct } from "@/components/ui";
 import RangePicker from "@/components/RangePicker";
+import FocusList from "@/components/FocusList";
+import { focusFor } from "@/lib/focus";
 import TaskToggle from "../tareas/TaskToggle";
 import { MEETING_OUTCOME_LABEL, TASK_CATEGORY_LABEL } from "@/lib/types";
 
@@ -46,6 +48,7 @@ export default async function MiPanelPage({
   const cur = (await loadFx()).base;
 
   const verFacturacion = can(user, "finanzas:ver");
+  const foco = await focusFor(user, today);
   const me = await performanceFor(user, range, verFacturacion);
   const company = await companyProgress(period, today, verFacturacion);
   const headline = await headlineObjective(period, today);
@@ -124,6 +127,8 @@ export default async function MiPanelPage({
       </PageHeader>
 
 
+      <FocusList items={foco} nombre={user.name.split(" ")[0]} />
+
       {/* Objetivo general de NetFlow ---------------------------------------- */}
       <Card className="mb-4" title="Objetivo general de NetFlow" subtitle={formatPeriod(period)}>
         {headline ? (
@@ -138,7 +143,7 @@ export default async function MiPanelPage({
             <div className="min-w-56 flex-1">
               <div className="mb-1 flex justify-between text-xs text-muted">
                 <span>{formatPct(headline.pct)} cumplido</span>
-                <span className="text-faint">quedan {company.daysLeft} día(s)</span>
+                <span className="text-faint">quedan {plural(company.daysLeft, "día")}</span>
               </div>
               <ProgressBar pct={headline.pct} expectedPct={elapsed} size="lg" />
             </div>
@@ -246,7 +251,7 @@ export default async function MiPanelPage({
                       <p className="text-xs text-faint">
                         {TASK_CATEGORY_LABEL[t.category] ?? t.category}
                         {t.due_date && (
-                          <span className={overdue ? "text-risk" : ""}> · vence {formatDate(t.due_date)}</span>
+                          <span className={overdue ? "text-risk" : ""} title={formatDate(t.due_date)}> · {dueLabel(t.due_date, today)}</span>
                         )}
                       </p>
                       {t.status === "bloqueado" && <p className="text-xs text-risk">Bloqueo: {t.blocker}</p>}
@@ -320,7 +325,7 @@ export default async function MiPanelPage({
                     {l.company && <span className="ml-2 text-xs text-muted">{l.company}</span>}
                     <p className={`text-xs ${overdue ? "text-risk" : "text-faint"}`}>
                       {l.next_action
-                        ? `${overdue ? "Vencida " : ""}${formatDate(l.next_action_date)} · ${l.next_action}`
+                        ? `${dueLabel(l.next_action_date, today)} · ${l.next_action}`
                         : "Sin próxima acción definida"}
                     </p>
                   </li>

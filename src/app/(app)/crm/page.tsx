@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { leadsList, leadSources, userMap, usersList } from "@/lib/queries";
-import { formatDate, todayISO } from "@/lib/dates";
+import { formatDate, todayISO, dueLabel, plural } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { STAGE_LABEL, STAGES, type Stage } from "@/lib/types";
 import { Badge, Card, EmptyState, Note, PageHeader, StatCard, type Tone } from "@/components/ui";
@@ -77,7 +77,13 @@ export default async function CrmPage({
         }}
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {missingData > 0 && (
+        <p className="mb-4 rounded-lg border border-warn-soft bg-warn-soft px-3 py-2 text-sm text-warn">
+          {missingData} oportunidad(es) abiertas sin próxima acción definida. Son las primeras que hay que ordenar.
+        </p>
+      )}
+
+      <div className="mt-6 mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Oportunidades abiertas" value={openCount} />
         <StatCard
           label="Con acción vencida"
@@ -91,12 +97,6 @@ export default async function CrmPage({
         />
         <StatCard label="Valor potencial abierto" value={formatMoney(openValue, "USD")} />
       </div>
-
-      {missingData > 0 && (
-        <p className="mb-4 rounded-lg border border-warn-soft bg-warn-soft px-3 py-2 text-sm text-warn">
-          {missingData} oportunidad(es) abiertas sin próxima acción definida. Son las primeras que hay que ordenar.
-        </p>
-      )}
 
       {/* Tablero por etapa */}
       <div className="scroll-x pb-2">
@@ -144,7 +144,7 @@ export default async function CrmPage({
                           <p className={`mt-1.5 truncate text-xs ${tone === "neutral" ? "text-faint" : tone === "warn" ? "text-warn" : "text-risk"}`}>
                             {missing
                               ? "Sin próxima acción"
-                              : `${overdue ? "Vencida " : ""}${formatDate(l.next_action_date)} · ${l.next_action}`}
+                              : `${dueLabel(l.next_action_date, today)} · ${l.next_action}`}
                           </p>
                         </Link>
                       );
@@ -163,7 +163,7 @@ export default async function CrmPage({
       </div>
 
       {/* Listado completo */}
-      <Card className="mt-6" title="Todas las oportunidades del filtro" subtitle={`${leads.length} resultado(s).`}>
+      <Card className="mt-6" title="Todas las oportunidades del filtro" subtitle={`${plural(leads.length, "resultado")}.`}>
         {leads.length === 0 ? (
           <EmptyState
             title="No hay oportunidades con este filtro"
@@ -210,7 +210,15 @@ export default async function CrmPage({
                       </td>
                       <td>{users.get(l.owner_id)?.name ?? "—"}</td>
                       <td className={overdue ? "text-risk" : "text-muted"}>
-                        {l.next_action ? `${formatDate(l.next_action_date)} · ${l.next_action}` : "—"}
+                        {l.next_action ? (
+                          <span title={formatDate(l.next_action_date)}>
+                            <span className="font-medium">{dueLabel(l.next_action_date, today)}</span>
+                            {" · "}
+                            {l.next_action}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="tnum text-right">
                         {l.potential_value_cents > 0

@@ -116,3 +116,51 @@ export function formatDateTime(iso: string | null): string {
   const [date, time] = iso.split(/[T ]/);
   return time ? `${formatDate(date)} ${time.slice(0, 5)}` : formatDate(date);
 }
+
+/**
+ * Fechas en lenguaje humano.
+ *
+ * "28/08/2026" obliga a hacer la cuenta mentalmente; "vence mañana" se lee de
+ * un vistazo. En una lista de veinte oportunidades, esa diferencia es la que
+ * hace que alguien detecte lo urgente sin leer fila por fila.
+ */
+export function relativeDate(iso: string | null, asOf = todayISO()): string {
+  if (!iso) return "—";
+  const day = iso.slice(0, 10);
+  const diff = daysBetween(asOf, day);
+
+  if (diff === 0) return "hoy";
+  if (diff === 1) return "mañana";
+  if (diff === -1) return "ayer";
+  if (diff > 1 && diff <= 7) return `en ${diff} días`;
+  if (diff < -1 && diff >= -7) return `hace ${Math.abs(diff)} días`;
+  if (diff > 7 && diff <= 30) return `en ${Math.round(diff / 7)} sem.`;
+  if (diff < -7 && diff >= -30) return `hace ${Math.round(Math.abs(diff) / 7)} sem.`;
+  return formatDate(day);
+}
+
+/** Como `relativeDate`, pero enmarcado como vencimiento. */
+export function dueLabel(iso: string | null, asOf = todayISO()): string {
+  if (!iso) return "sin fecha";
+  const diff = daysBetween(asOf, iso.slice(0, 10));
+  if (diff === 0) return "vence hoy";
+  if (diff === 1) return "vence mañana";
+  if (diff < 0) return `vencida ${relativeDate(iso, asOf)}`;
+  return `vence ${relativeDate(iso, asOf)}`;
+}
+
+/** Fecha completa para tooltips: la relativa es cómoda pero ambigua. */
+export function fullDate(iso: string | null): string {
+  return iso ? formatDate(iso.slice(0, 10)) : "—";
+}
+
+/**
+ * Plural en castellano.
+ *
+ * "4 día(s)" se lee como un formulario, no como una frase. Es un detalle
+ * chico que aparece en toda la aplicación, así que resolverlo una vez vale
+ * la pena.
+ */
+export function plural(n: number, singular: string, plural?: string): string {
+  return `${n} ${n === 1 ? singular : (plural ?? `${singular}s`)}`;
+}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { resolveRange, monthOf, formatPeriod } from "@/lib/dates";
+import { resolveRange, monthOf, formatPeriod, plural } from "@/lib/dates";
 import { teamPerformance } from "@/lib/metrics/team";
 import { loadFx } from "@/lib/fx";
 import { AREA_LABEL } from "@/lib/types";
@@ -107,7 +107,7 @@ export default async function EquipoPage({
               />
               {p.progress.pct !== null && (
                 <p className="mt-1.5 text-xs text-muted">
-                  Ritmo esperado {formatPct(p.progress.expectedPct)} · quedan {p.progress.daysLeft} día(s).
+                  Ritmo esperado {formatPct(p.progress.expectedPct)} · quedan {plural(p.progress.daysLeft, "día")}.
                 </p>
               )}
             </div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { alertsFor, SEVERITY_LABEL, type AlertSeverity } from "@/lib/alerts";
-import { todayISO } from "@/lib/dates";
+import { todayISO, plural } from "@/lib/dates";
 import { Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +80,7 @@ export default async function AlertasPage({
       ) : (
         <div className="mt-4 space-y-4">
           {Object.entries(grouped).map(([kind, items]) => (
-            <Card key={kind} title={KIND_LABEL[kind] ?? kind} subtitle={`${items.length} caso(s).`}>
+            <Card key={kind} title={KIND_LABEL[kind] ?? kind} subtitle={`${plural(items.length, "caso")}.`}>
               <ul className="divide-y divide-border">
                 {items.map((a) => (
                   <li key={a.id} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">

@@ -1,6 +1,6 @@
 import { requireAdminOr404 } from "@/lib/auth";
 import { all } from "@/lib/db";
-import { resolveRange, formatDate, todayISO } from "@/lib/dates";
+import { resolveRange, formatDate, todayISO, plural } from "@/lib/dates";
 import { financeSummary, expensesByCategory, marginByClient, monthlyTrend } from "@/lib/metrics/finance";
 import { formatMoney } from "@/lib/money";
 import { loadFx } from "@/lib/fx";
@@ -121,7 +121,7 @@ export default async function FinanzasPage({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="MRR" value={formatMoney(f.mrrCents, cur)} hint={`${f.activeClients} cliente(s)`} />
+        <StatCard label="MRR" value={formatMoney(f.mrrCents, cur)} hint={plural(f.activeClients, "cliente")} />
         <StatCard label="MRR nuevo" value={formatMoney(f.newMrrCents, cur)} tone="ok" />
         <StatCard
           label="Costo operativo por cliente"
@@ -215,7 +215,7 @@ export default async function FinanzasPage({
       <Card
         className="mt-4"
         title="Gastos del período"
-        subtitle={`${expenses.length} movimiento(s).`}
+        subtitle={`${plural(expenses.length, "movimiento")}.`}
         action={<ExportButton kind="gastos" from={range.from} to={range.to} />}
       >
         {expenses.length === 0 ? (

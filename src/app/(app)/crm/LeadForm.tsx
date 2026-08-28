@@ -35,6 +35,41 @@ function dtLocal(value: string | null): string {
 }
 
 /**
+ * Sección plegable.
+ *
+ * Veinte campos de golpe hacen que la gente cargue mal o directamente no
+ * cargue. Arriba queda lo mínimo para que la oportunidad exista y sea
+ * accionable; el resto se abre solo si hace falta. Se usa <details> nativo:
+ * funciona sin JavaScript y el navegador ya sabe cómo comportarse.
+ */
+function Seccion({
+  titulo,
+  hint,
+  abierta = false,
+  children,
+}: {
+  titulo: string;
+  hint?: string;
+  abierta?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={abierta} className="rounded-xl border border-border bg-surface-2/40">
+      <summary className="cursor-pointer list-none px-3.5 py-2.5 text-sm font-medium marker:content-[''] [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center justify-between gap-2">
+          <span>
+            {titulo}
+            {hint && <span className="ml-2 text-xs font-normal text-faint">{hint}</span>}
+          </span>
+          <span aria-hidden className="text-faint transition-transform">▾</span>
+        </span>
+      </summary>
+      <div className="border-t border-border px-3.5 py-3.5">{children}</div>
+    </details>
+  );
+}
+
+/**
  * Ficha de oportunidad. Los tres campos que el CRM no deja vacios
  * (responsable, próxima acción y fecha) están marcados como obligatorios
  * y la validación se repite del lado del servidor y de la base.
@@ -59,22 +94,16 @@ export default function LeadForm({
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-          Identificacion
+          Lo mínimo para empezar
         </legend>
         <Field label="Nombre" required>
           <input className="field" name="name" defaultValue={lead?.name} required />
         </Field>
-        <Field label="Empresa / medico / centro">
+        <Field label="Empresa / médico / centro">
           <input className="field" name="company" defaultValue={lead?.company} />
         </Field>
         <Field label="Especialidad">
           <input className="field" name="specialty" defaultValue={lead?.specialty} />
-        </Field>
-        <Field label="Email de contacto">
-          <input className="field" type="email" name="contact_email" defaultValue={lead?.contact_email} />
-        </Field>
-        <Field label="Teléfono de contacto">
-          <input className="field" name="contact_phone" defaultValue={lead?.contact_phone} />
         </Field>
         <Field label="Origen del lead">
           <select className="field" name="source" defaultValue={lead?.source ?? "meta_ads"}>
@@ -86,6 +115,21 @@ export default function LeadForm({
           </select>
         </Field>
       </fieldset>
+
+      <Seccion
+        titulo="Datos de contacto"
+        hint="email y teléfono"
+        abierta={Boolean(lead?.contact_email || lead?.contact_phone)}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Email de contacto">
+            <input className="field" type="email" name="contact_email" defaultValue={lead?.contact_email} />
+          </Field>
+          <Field label="Teléfono de contacto">
+            <input className="field" name="contact_phone" defaultValue={lead?.contact_phone} />
+          </Field>
+        </div>
+      </Seccion>
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
@@ -100,7 +144,7 @@ export default function LeadForm({
             required
           />
         </Field>
-        <Field label="Responsable" required hint="Quien tiene la próxima acción.">
+        <Field label="Responsable" required hint="Quién tiene la próxima acción.">
           <select className="field" name="owner_id" defaultValue={lead?.owner_id ?? ""} required>
             <option value="" disabled>
               Elegir responsable
@@ -124,7 +168,7 @@ export default function LeadForm({
             )}
           </select>
         </Field>
-        <Field label="Setter" hint="Quien contacto y agendo.">
+        <Field label="Setter" hint="Quién contactó y agendó.">
           <select className="field" name="setter_id" defaultValue={lead?.setter_id ?? ""}>
             <option value="">—</option>
             {users.map((u) => (
@@ -134,7 +178,7 @@ export default function LeadForm({
             ))}
           </select>
         </Field>
-        <Field label="Closer" hint="Quien lleva la reunión y cierra.">
+        <Field label="Closer" hint="Quién lleva la reunión y cierra.">
           <select className="field" name="closer_id" defaultValue={lead?.closer_id ?? ""}>
             <option value="">—</option>
             {users.map((u) => (
@@ -157,7 +201,7 @@ export default function LeadForm({
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-          Próxima acción (obligatoria mientras este abierta)
+          Próxima acción (obligatoria mientras esté abierta)
         </legend>
         <Field label="Próxima acción" required>
           <input
@@ -184,10 +228,8 @@ export default function LeadForm({
         )}
       </fieldset>
 
+      <Seccion titulo="Reunión" hint="cuándo es y cómo salió" abierta={Boolean(lead?.meeting_at)}>
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-          Reunión
-        </legend>
         <Field label="Fecha de la reunión">
           <input
             className="field"
@@ -237,11 +279,10 @@ export default function LeadForm({
           </>
         )}
       </fieldset>
+      </Seccion>
 
+      <Seccion titulo="Oferta y valor" hint="plan de interés y cuánto vale" abierta={Boolean(lead?.potential_value_cents)}>
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-          Oferta
-        </legend>
         <Field label="Plan / oferta de interes">
           <input className="field" name="plan_interest" defaultValue={lead?.plan_interest} />
         </Field>
@@ -261,6 +302,7 @@ export default function LeadForm({
           </select>
         </Field>
       </fieldset>
+      </Seccion>
 
       <Field label="Notas">
         <textarea className="field" name="notes" rows={3} defaultValue={lead?.notes} />
