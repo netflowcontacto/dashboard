@@ -1,6 +1,6 @@
 import "server-only";
-import { getDb } from "../db";
-import { fxRate, baseCurrency, toBase } from "../fx";
+import { all, one } from "../db";
+import { loadFx, toBase, type Fx } from "../fx";
 import type { DateRange } from "../dates";
 import type { Currency } from "../types";
 
@@ -10,14 +10,14 @@ import type { Currency } from "../types";
  * Dos lecturas distintas, a propósito:
  *
  *  - COHORTE: se toman los leads que INGRESARON en el rango y se mira hasta
- *    donde llegaron. Es la única forma de que los porcentajes de conversión
- *    sean honestos (siempre <= 100% y decrecientes). Es la que responde
- *    "de lo que entro este mes, cuánto convertimos".
+ *    dónde llegaron. Es la única forma de que los porcentajes de conversión
+ *    sean honestos (siempre <= 100% y decrecientes). Responde "de lo que
+ *    entró este mes, cuánto convertimos".
  *
- *  - ACTIVIDAD: que paso EN el rango, sin importar cuando entro el lead.
- *    Es la que responde "cuantas reuniones hicimos esta semana".
+ *  - ACTIVIDAD: qué pasó EN el rango, sin importar cuándo entró el lead.
+ *    Responde "cuántas reuniones hicimos esta semana".
  *
- * Mezclar las dos es el error clasico que hace que un funnel muestre
+ * Mezclar las dos es el error clásico que hace que un funnel muestre
  * "120% de contacto". Acá están separadas y etiquetadas.
  */
 
@@ -53,7 +53,7 @@ export interface FunnelResult {
   rates: {
     cplCents: number | null;
     contacto: number | null;
-    calificación: number | null;
+    calificacion: number | null;
     leadAReunion: number | null;
     showRate: number | null;
     reunionAPropuesta: number | null;
@@ -69,93 +69,82 @@ function pct(numerator: number, denominator: number): number | null {
 }
 
 /** Inversión publicitaria del rango. Fuente única: gastos de categoría paid_media. */
-export function adInvestmentCents(range: DateRange): number {
-  const rows = getDb()
-    .prepare(
-      `SELECT amount_cents AS cents, currency FROM expenses
-       WHERE category = 'paid_media' AND date BETWEEN ? AND ?`,
-    )
-    .all(range.from, range.to) as { cents: number; currency: Currency }[];
-
-  const rate = fxRate();
-  const base = baseCurrency();
-  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, rate, base), 0);
+export async function adInvestmentCents(range: DateRange, fx?: Fx): Promise<number> {
+  const context = fx ?? (await loadFx());
+  const rows = await all<{ cents: number; currency: Currency }>(
+    `SELECT amount_cents AS cents, currency FROM expenses
+     WHERE category = 'paid_media' AND date BETWEEN ? AND ?`,
+    [range.from, range.to],
+  );
+  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, context), 0);
 }
 
-export function computeFunnel(range: DateRange): FunnelResult {
-  const db = getDb();
+export async function computeFunnel(range: DateRange): Promise<FunnelResult> {
   const { from, to } = range;
+  const fx = await loadFx();
 
-  const cohort = db
-    .prepare(
+  const [cohortRow, activityRow, wonClients, showRow, investmentCents] = await Promise.all([
+    one<Record<string, number | null>>(
       `SELECT
-         COUNT(*)                                                             AS leads,
-         SUM(first_contacted_at   IS NOT NULL)                                AS contactados,
-         SUM(qualified_at         IS NOT NULL)                                AS calificados,
-         SUM(meeting_scheduled_at IS NOT NULL)                                AS reunionesAgendadas,
-         SUM(meeting_held_at      IS NOT NULL)                                AS reunionesRealizadas,
-         SUM(proposal_sent_at     IS NOT NULL)                                AS propuestas,
-         SUM(outcome = 'won')                                                 AS clientes
+         COUNT(*)                                                  AS leads,
+         COUNT(*) FILTER (WHERE first_contacted_at   IS NOT NULL)  AS contactados,
+         COUNT(*) FILTER (WHERE qualified_at         IS NOT NULL)  AS calificados,
+         COUNT(*) FILTER (WHERE meeting_scheduled_at IS NOT NULL)  AS reuniones_agendadas,
+         COUNT(*) FILTER (WHERE meeting_held_at      IS NOT NULL)  AS reuniones_realizadas,
+         COUNT(*) FILTER (WHERE proposal_sent_at     IS NOT NULL)  AS propuestas,
+         COUNT(*) FILTER (WHERE outcome = 'won')                   AS clientes
        FROM leads WHERE entered_at BETWEEN ? AND ?`,
-    )
-    .get(from, to) as Record<string, number | null>;
-
-  const activity = db
-    .prepare(
+      [from, to],
+    ),
+    one<Record<string, number>>(
       `SELECT
-         (SELECT COUNT(*) FROM leads WHERE substr(meeting_scheduled_at,1,10) BETWEEN ? AND ?) AS reunionesAgendadas,
-         (SELECT COUNT(*) FROM leads WHERE substr(meeting_held_at,1,10)      BETWEEN ? AND ?) AS reunionesRealizadas,
+         (SELECT COUNT(*) FROM leads WHERE substr(meeting_scheduled_at,1,10) BETWEEN ? AND ?) AS reuniones_agendadas,
+         (SELECT COUNT(*) FROM leads WHERE substr(meeting_held_at,1,10)      BETWEEN ? AND ?) AS reuniones_realizadas,
          (SELECT COUNT(*) FROM leads WHERE meeting_outcome = 'no_show'
-                                       AND substr(meeting_at,1,10)           BETWEEN ? AND ?) AS noShows,
+                                       AND substr(meeting_at,1,10)           BETWEEN ? AND ?) AS no_shows,
          (SELECT COUNT(*) FROM leads WHERE substr(proposal_sent_at,1,10)     BETWEEN ? AND ?) AS propuestas,
          (SELECT COUNT(*) FROM leads WHERE outcome = 'won'
                                        AND substr(closed_at,1,10)            BETWEEN ? AND ?) AS clientes`,
-    )
-    .get(from, to, from, to, from, to, from, to, from, to) as Record<string, number>;
+      [from, to, from, to, from, to, from, to, from, to],
+    ),
+    all<{ cents: number; currency: Currency }>(
+      `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
+       WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL`,
+      [from, to],
+    ),
+    one<{ resueltas: number | null; realizadas: number | null }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE meeting_outcome IN ('realizada','no_show')) AS resueltas,
+         COUNT(*) FILTER (WHERE meeting_outcome = 'realizada')              AS realizadas
+       FROM leads
+       WHERE meeting_at IS NOT NULL AND substr(meeting_at,1,10) BETWEEN ? AND ?`,
+      [from, to],
+    ),
+    adInvestmentCents(range, fx),
+  ]);
 
   const num = (v: number | null | undefined) => Number(v ?? 0);
   const c = {
-    leads: num(cohort.leads),
-    contactados: num(cohort.contactados),
-    calificados: num(cohort.calificados),
-    reunionesAgendadas: num(cohort.reunionesAgendadas),
-    reunionesRealizadas: num(cohort.reunionesRealizadas),
-    propuestas: num(cohort.propuestas),
-    clientes: num(cohort.clientes),
+    leads: num(cohortRow?.leads),
+    contactados: num(cohortRow?.contactados),
+    calificados: num(cohortRow?.calificados),
+    reunionesAgendadas: num(cohortRow?.reuniones_agendadas),
+    reunionesRealizadas: num(cohortRow?.reuniones_realizadas),
+    propuestas: num(cohortRow?.propuestas),
+    clientes: num(cohortRow?.clientes),
   };
 
-  const investmentCents = adInvestmentCents(range);
-
   // Revenue generado = MRR nuevo de los clientes que se cerraron en el rango.
-  const rate = fxRate();
-  const base = baseCurrency();
-  const wonClients = db
-    .prepare(
-      `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
-       WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL`,
-    )
-    .all(from, to) as { cents: number; currency: Currency }[];
-  const revenueCents = wonClients.reduce((acc, r) => acc + toBase(r.cents, r.currency, rate, base), 0);
+  const revenueCents = wonClients.reduce((acc, r) => acc + toBase(r.cents, r.currency, fx), 0);
 
-  // Show rate: solo reuniones cuya fecha ya paso dentro del rango.
-  const showRow = db
-    .prepare(
-      `SELECT
-         SUM(meeting_outcome IN ('realizada','no_show')) AS resueltas,
-         SUM(meeting_outcome = 'realizada')              AS realizadas
-       FROM leads
-       WHERE meeting_at IS NOT NULL AND substr(meeting_at,1,10) BETWEEN ? AND ?`,
-    )
-    .get(from, to) as { resueltas: number | null; realizadas: number | null };
-
-  const clientesPeriodo = activity.clientes;
+  const clientesPeriodo = num(activityRow?.clientes);
 
   const rates = {
     cplCents: c.leads > 0 ? Math.round(investmentCents / c.leads) : null,
     contacto: pct(c.contactados, c.leads),
-    calificación: pct(c.calificados, c.contactados),
+    calificacion: pct(c.calificados, c.contactados),
     leadAReunion: pct(c.reunionesAgendadas, c.leads),
-    showRate: pct(num(showRow.realizadas), num(showRow.resueltas)),
+    showRate: pct(num(showRow?.realizadas), num(showRow?.resueltas)),
     reunionAPropuesta: pct(c.propuestas, c.reunionesRealizadas),
     reunionACliente: pct(c.clientes, c.reunionesRealizadas),
     cacCents: clientesPeriodo > 0 ? Math.round(investmentCents / clientesPeriodo) : null,
@@ -179,14 +168,14 @@ export function computeFunnel(range: DateRange): FunnelResult {
 
   return {
     investmentCents,
-    currency: base,
+    currency: fx.base,
     cohort: c,
     activity: {
-      reunionesAgendadas: activity.reunionesAgendadas,
-      reunionesRealizadas: activity.reunionesRealizadas,
-      noShows: activity.noShows,
-      propuestas: activity.propuestas,
-      clientes: activity.clientes,
+      reunionesAgendadas: num(activityRow?.reuniones_agendadas),
+      reunionesRealizadas: num(activityRow?.reuniones_realizadas),
+      noShows: num(activityRow?.no_shows),
+      propuestas: num(activityRow?.propuestas),
+      clientes: clientesPeriodo,
     },
     rates,
     revenueCents,
@@ -194,15 +183,16 @@ export function computeFunnel(range: DateRange): FunnelResult {
   };
 }
 
-/** Origen de los leads del rango, para ver de donde viene el volumen real. */
-export function leadsBySource(range: DateRange): { source: string; leads: number; clientes: number }[] {
-  return getDb()
-    .prepare(
-      `SELECT source,
-              COUNT(*)             AS leads,
-              SUM(outcome = 'won') AS clientes
-       FROM leads WHERE entered_at BETWEEN ? AND ?
-       GROUP BY source ORDER BY leads DESC`,
-    )
-    .all(range.from, range.to) as { source: string; leads: number; clientes: number }[];
+/** Origen de los leads del rango, para ver de dónde viene el volumen real. */
+export async function leadsBySource(
+  range: DateRange,
+): Promise<{ source: string; leads: number; clientes: number }[]> {
+  return all<{ source: string; leads: number; clientes: number }>(
+    `SELECT source,
+            COUNT(*)                                AS leads,
+            COUNT(*) FILTER (WHERE outcome = 'won') AS clientes
+     FROM leads WHERE entered_at BETWEEN ? AND ?
+     GROUP BY source ORDER BY leads DESC`,
+    [range.from, range.to],
+  );
 }

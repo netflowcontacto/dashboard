@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb, setSetting } from "@/lib/db";
+import { run, setSetting } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
+import { clearFxCache } from "@/lib/fx";
 import { todayISO } from "@/lib/dates";
 import { parseAmountToCents } from "@/lib/money";
 import { errorMessage, type ActionState } from "@/lib/errors";
@@ -56,20 +57,21 @@ export async function saveExpense(_prev: ActionState, fd: FormData): Promise<Act
       F.str(fd, "notes"),
     ];
 
-    const db = getDb();
     if (id && fullAccess) {
-      db.prepare(
+      await run(
         `UPDATE expenses SET concept=?, category=?, amount_cents=?, currency=?, date=?, cost_type=?,
                              recurrence=?, vendor=?, client_id=?, direct_cost=?, status=?,
                              platform=?, campaign=?, notes=?
          WHERE id=?`,
-      ).run(...values, id);
+        [...values, id],
+      );
     } else {
-      db.prepare(
+      await run(
         `INSERT INTO expenses (concept, category, amount_cents, currency, date, cost_type, recurrence,
                                vendor, client_id, direct_cost, status, platform, campaign, notes, created_by)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ).run(...values, user.id);
+        [...values, user.id],
+      );
     }
 
     revalidatePath("/finanzas");
@@ -86,7 +88,7 @@ export async function deleteExpense(fd: FormData): Promise<void> {
   if (!can(user, "finanzas:cargar")) return;
   const id = F.int(fd, "id");
   if (!id) return;
-  getDb().prepare("DELETE FROM expenses WHERE id = ?").run(id);
+  await run("DELETE FROM expenses WHERE id = ?", [id]);
   revalidatePath("/finanzas");
 }
 
@@ -102,17 +104,16 @@ export async function saveCashSnapshot(_prev: ActionState, fd: FormData): Promis
     const balance = parseAmountToCents(F.str(fd, "balance"));
     if (balance === null) return { error: "Saldo invalido." };
 
-    getDb()
-      .prepare(
-        `INSERT INTO cash_snapshots (account, currency, balance_cents, date, notes) VALUES (?,?,?,?,?)`,
-      )
-      .run(
+    await run(
+      `INSERT INTO cash_snapshots (account, currency, balance_cents, date, notes) VALUES (?,?,?,?,?)`,
+      [
         account,
         F.pick(fd, "currency", CURRENCIES, "ARS"),
         balance,
         F.date(fd, "date", todayISO()),
         F.str(fd, "notes"),
-      );
+      ],
+    );
 
     revalidatePath("/finanzas");
     revalidatePath("/resumen");
@@ -130,8 +131,9 @@ export async function saveFxSettings(_prev: ActionState, fd: FormData): Promise<
   const rate = F.num(fd, "fx_ars_per_usd", 0);
   if (rate <= 0) return { error: "El tipo de cambio tiene que ser mayor a cero." };
 
-  setSetting("fx_ars_per_usd", String(rate));
-  setSetting("base_currency", F.pick(fd, "base_currency", CURRENCIES, "USD"));
+  await setSetting("fx_ars_per_usd", String(rate));
+  await setSetting("base_currency", F.pick(fd, "base_currency", CURRENCIES, "USD"));
+  clearFxCache();
 
   revalidatePath("/", "layout");
   return { ok: "Ajustes de moneda guardados." };
@@ -141,9 +143,10 @@ export async function saveOperationalSettings(_prev: ActionState, fd: FormData):
   const user = await requireUser();
   if (!can(user, "ajustes:gestionar")) return { error: "Solo dirección puede cambiar los ajustes." };
 
-  setSetting("sla_primer_contacto_horas", String(Math.max(1, F.num(fd, "sla_primer_contacto_horas", 24))));
-  setSetting("dias_follow_up_propuesta", String(Math.max(1, F.num(fd, "dias_follow_up_propuesta", 5))));
-  setSetting("paid_lead_sources", F.str(fd, "paid_lead_sources", "meta_ads,google_ads,instagram_ads,pauta"));
+  await setSetting("sla_primer_contacto_horas", String(Math.max(1, F.num(fd, "sla_primer_contacto_horas", 24))));
+  await setSetting("dias_follow_up_propuesta", String(Math.max(1, F.num(fd, "dias_follow_up_propuesta", 5))));
+  await setSetting("paid_lead_sources", F.str(fd, "paid_lead_sources", "meta_ads,google_ads,instagram_ads,pauta"));
+  await setSetting("visibilidad_equipo", F.pick(fd, "visibilidad_equipo", ["abierta", "restringida"] as const, "abierta"));
 
   revalidatePath("/", "layout");
   return { ok: "Ajustes operativos guardados." };
@@ -160,12 +163,10 @@ export async function saveCampaignAsset(_prev: ActionState, fd: FormData): Promi
   if (!name) return { error: "El creativo necesita un nombre." };
 
   try {
-    getDb()
-      .prepare(
-        `INSERT INTO campaign_assets (name, kind, platform, campaign, date, result, user_id, notes)
-         VALUES (?,?,?,?,?,?,?,?)`,
-      )
-      .run(
+    await run(
+      `INSERT INTO campaign_assets (name, kind, platform, campaign, date, result, user_id, notes)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [
         name,
         F.pick(fd, "kind", ["creativo", "test"] as const, "creativo"),
         F.str(fd, "platform"),
@@ -174,7 +175,8 @@ export async function saveCampaignAsset(_prev: ActionState, fd: FormData): Promi
         F.str(fd, "result"),
         user.id,
         F.str(fd, "notes"),
-      );
+      ],
+    );
 
     revalidatePath("/inversion");
     return { ok: "Creativo registrado." };

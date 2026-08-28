@@ -1,14 +1,14 @@
 /**
  * Limpieza posterior al build.
  *
- * El trazado de archivos de Next arrastra `data/` dentro de `.next/standalone`,
- * porque `db.ts` arma ahí la ruta por defecto de la base. Sin esta limpieza, el
- * artefacto de despliegue se llevaría la base de producción adentro: datos del
- * negocio y hashes de contraseñas dentro de la imagen.
+ * El trazado de archivos de Next arrastra la carpeta `data/` dentro de
+ * `.next/standalone`. Con PostgreSQL ahí ya no vive la base, pero sí pueden
+ * vivir los archivos adjuntos del equipo (contratos, propuestas). Que eso
+ * termine dentro del artefacto de despliegue sería una filtración.
  *
  * Se resuelve acá y no con `outputFileTracingExcludes` porque esa opción, con
  * la clave "*", sobre-excluye y deja afuera módulos internos de Next: el
- * servidor standalone deja de arrancar.
+ * servidor standalone deja de arrancar. Se probó, se rompió, quedó documentado.
  *
  * npm lo ejecuta solo después de `npm run build`.
  */
@@ -26,20 +26,24 @@ function sweep(dir) {
     if (entry.isDirectory()) {
       if (entry.name === "node_modules") continue;
       sweep(full);
-      // Carpeta que quedó vacía tras sacar la base
       if (fs.readdirSync(full).length === 0) fs.rmdirSync(full);
-    } else if (/\.db(-wal|-shm|-journal)?$/.test(entry.name)) {
+    } else if (/\.(db|db-wal|db-shm|db-journal|sql\.gz)$/.test(entry.name)) {
       fs.unlinkSync(full);
       removed.push(path.relative(standalone, full));
     }
   }
 }
 
+// La carpeta de datos completa no tiene nada que hacer en el build.
+const dataDir = path.join(standalone, "data");
+if (fs.existsSync(dataDir)) {
+  fs.rmSync(dataDir, { recursive: true, force: true });
+  removed.push("data/");
+}
 sweep(standalone);
 
-if (removed.length > 0) {
-  console.log(`postbuild: se quitaron ${removed.length} archivo(s) de base del build:`);
-  for (const r of removed) console.log(`  - ${r}`);
-} else {
-  console.log("postbuild: el build no contiene archivos de base.");
-}
+console.log(
+  removed.length > 0
+    ? `postbuild: se quitaron del build ${removed.join(", ")}`
+    : "postbuild: el build no contiene datos del negocio.",
+);

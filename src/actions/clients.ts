@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb } from "@/lib/db";
+import { run } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { todayISO } from "@/lib/dates";
@@ -56,25 +56,26 @@ export async function saveClient(_prev: ActionState, fd: FormData): Promise<Acti
       F.str(fd, "notes"),
     ];
 
-    const db = getDb();
     if (id) {
-      db.prepare(
+      await run(
         `UPDATE clients SET
            name=?, specialty=?, plan=?, fee_cents=?, fee_currency=?, start_date=?, next_charge_date=?,
            payment_status=?, paid_media_owner_id=?, setter_owner_id=?, dev_required=?, landing=?,
            onboarding_status=?, account_health=?, alerts_note=?, renewal_date=?, churned_at=?,
-           churn_reason=?, notes=?, updated_at=datetime('now')
+           churn_reason=?, notes=?, updated_at=nf_now()
          WHERE id=?`,
-      ).run(...values, id);
+        [...values, id],
+      );
       revalidatePath(`/clientes/${id}`);
     } else {
-      db.prepare(
+      await run(
         `INSERT INTO clients (
            name, specialty, plan, fee_cents, fee_currency, start_date, next_charge_date,
            payment_status, paid_media_owner_id, setter_owner_id, dev_required, landing,
            onboarding_status, account_health, alerts_note, renewal_date, churned_at, churn_reason, notes
          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ).run(...values);
+        values,
+      );
     }
 
     revalidatePath("/clientes");
@@ -96,17 +97,16 @@ export async function setAccountHealth(fd: FormData): Promise<void> {
   const id = F.int(fd, "id");
   if (!id) return;
 
-  getDb()
-    .prepare(
-      `UPDATE clients SET account_health = ?, alerts_note = ?, onboarding_status = ?, updated_at = datetime('now')
-       WHERE id = ?`,
-    )
-    .run(
+  await run(
+    `UPDATE clients SET account_health = ?, alerts_note = ?, onboarding_status = ?, updated_at = nf_now()
+     WHERE id = ?`,
+    [
       F.pick(fd, "account_health", HEALTH, "bien"),
       F.str(fd, "alerts_note"),
       F.pick(fd, "onboarding_status", ONBOARDING, "pendiente"),
       id,
-    );
+    ],
+  );
 
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${id}`);
@@ -127,12 +127,10 @@ export async function saveInvoice(_prev: ActionState, fd: FormData): Promise<Act
     const issuedAt = F.date(fd, "issued_at", todayISO());
     const paidAt = status === "cobrada" ? (F.optDate(fd, "paid_at") ?? todayISO()) : null;
 
-    getDb()
-      .prepare(
-        `INSERT INTO invoices (client_id, period, concept, amount_cents, currency, issued_at, due_at, status, paid_at, notes)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      )
-      .run(
+    await run(
+      `INSERT INTO invoices (client_id, period, concept, amount_cents, currency, issued_at, due_at, status, paid_at, notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [
         clientId,
         F.str(fd, "period") || issuedAt.slice(0, 7),
         F.str(fd, "concept") || "Fee mensual",
@@ -143,7 +141,8 @@ export async function saveInvoice(_prev: ActionState, fd: FormData): Promise<Act
         status,
         paidAt,
         F.str(fd, "notes"),
-      );
+      ],
+    );
 
     revalidatePath("/finanzas");
     revalidatePath(`/clientes/${clientId}`);
@@ -159,9 +158,10 @@ export async function markInvoicePaid(fd: FormData): Promise<void> {
   const id = F.int(fd, "id");
   if (!id) return;
 
-  getDb()
-    .prepare("UPDATE invoices SET status = 'cobrada', paid_at = ? WHERE id = ?")
-    .run(F.optDate(fd, "paid_at") ?? todayISO(), id);
+  await run("UPDATE invoices SET status = 'cobrada', paid_at = ? WHERE id = ?", [
+    F.optDate(fd, "paid_at") ?? todayISO(),
+    id,
+  ]);
 
   revalidatePath("/finanzas");
   revalidatePath("/clientes");

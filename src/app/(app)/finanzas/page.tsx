@@ -1,9 +1,9 @@
-import { requireAdmin } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { requireAdminOr404 } from "@/lib/auth";
+import { all } from "@/lib/db";
 import { resolveRange, formatDate, todayISO } from "@/lib/dates";
 import { financeSummary, expensesByCategory, marginByClient, monthlyTrend } from "@/lib/metrics/finance";
 import { formatMoney } from "@/lib/money";
-import { fxRate, baseCurrency } from "@/lib/fx";
+import { loadFx } from "@/lib/fx";
 import { clientsList } from "@/lib/queries";
 import { EXPENSE_CATEGORY_LABEL, type Currency, type ExpenseCategory } from "@/lib/types";
 import { previousRange, MONTH_SHORT } from "@/lib/metrics/compare";
@@ -25,7 +25,7 @@ export default async function FinanzasPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  await requireAdminOr404();
   const sp = await searchParams;
   const range = resolveRange({
     preset: sp.preset as string,
@@ -33,37 +33,36 @@ export default async function FinanzasPage({
     to: sp.to as string,
   });
 
-  const f = financeSummary(range);
-  const byCategory = expensesByCategory(range);
-  const margins = marginByClient(range);
-  const trend = monthlyTrend(6, range.to);
+  const f = await financeSummary(range);
+  const byCategory = await expensesByCategory(range);
+  const margins = await marginByClient(range);
+  const trend = await monthlyTrend(6, range.to);
   const cur = f.currency;
   const today = todayISO();
   const prev = previousRange(range);
-  const prevFinance = financeSummary(prev);
+  const prevFinance = await financeSummary(prev);
   const moneyDelta = (current: number, previous: number, higherIsBetter = true): DeltaValue => ({
     pct: previous === 0 ? null : ((current - previous) / Math.abs(previous)) * 100,
     higherIsBetter,
     vs: prev.label,
   });
 
-  const expenses = getDb()
-    .prepare(
-      `SELECT e.*, c.name AS client_name FROM expenses e
-       LEFT JOIN clients c ON c.id = e.client_id
-       WHERE e.date BETWEEN ? AND ? ORDER BY e.date DESC, e.id DESC LIMIT 100`,
-    )
-    .all(range.from, range.to) as {
-      id: number; concept: string; category: ExpenseCategory; amount_cents: number; currency: Currency;
-      date: string; cost_type: string; recurrence: string; vendor: string; status: string;
-      client_name: string | null; direct_cost: number;
-    }[];
+  const expenses = await all<{
+    id: number; concept: string; category: ExpenseCategory; amount_cents: number; currency: Currency;
+    date: string; cost_type: string; recurrence: string; vendor: string; status: string;
+    client_name: string | null; direct_cost: number;
+  }>(
+    `SELECT e.*, c.name AS client_name FROM expenses e
+     LEFT JOIN clients c ON c.id = e.client_id
+     WHERE e.date BETWEEN ? AND ? ORDER BY e.date DESC, e.id DESC LIMIT 100`,
+    [range.from, range.to],
+  );
 
     return (
     <>
       <PageHeader
         title="Finanzas"
-        description={`Información sensible: visible únicamente para dirección. Consolidado en ${cur} al tipo de cambio de referencia (1 USD = ${fxRate()} ARS).`}
+        description={`Información sensible: visible únicamente para dirección. Consolidado en ${cur} al tipo de cambio de referencia (1 USD = ${(await loadFx()).rate} ARS).`}
       >
         <RangePicker preset={range.preset} from={range.from} to={range.to} />
       </PageHeader>
@@ -205,7 +204,7 @@ export default async function FinanzasPage({
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Card title="Cargar gasto">
-            <ExpenseForm clients={clientsList()} today={today} />
+            <ExpenseForm clients={await clientsList()} today={today} />
           </Card>
         </div>
         <Card title="Caja">

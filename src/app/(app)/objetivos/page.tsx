@@ -5,9 +5,9 @@ import {
   activeUsers, areaProgress, companyProgress, daysLeftInPeriod, listObjectives,
   periodElapsedPct, personProgress, progressFor, type ObjectiveProgress,
 } from "@/lib/metrics/objectives";
-import { METRICS } from "@/lib/metrics/registry";
-import { baseCurrency } from "@/lib/fx";
-import { AREA_LABEL, type Area } from "@/lib/types";
+import { selectableMetrics } from "@/lib/metrics/registry";
+import { loadFx } from "@/lib/fx";
+import { AREA_LABEL, type Area, type Currency } from "@/lib/types";
 import { Badge, Card, EmptyState, PageHeader, ProgressBar, StatCard, formatMetric, formatPct } from "@/components/ui";
 import ObjectiveForm from "./ObjectiveForm";
 import DeleteObjective from "./DeleteObjective";
@@ -17,11 +17,12 @@ export const dynamic = "force-dynamic";
 function ObjectiveTable({
   rows,
   canDelete,
+  cur,
 }: {
   rows: ObjectiveProgress[];
   canDelete: boolean;
+  cur: Currency;
 }) {
-  const cur = baseCurrency();
   return (
     <div className="scroll-x">
       <table className="nf">
@@ -77,22 +78,37 @@ export default async function ObjetivosPage({
   const editar = can(user, "objetivos:cargar");
   const verTodos = can(user, "equipo:ver_todos");
 
-  const company = companyProgress(period, today);
+  const verFacturacion = can(user, "finanzas:ver");
+  const [company, allObjectives, fx, metricUsers] = await Promise.all([
+    companyProgress(period, today, verFacturacion),
+    listObjectives(period),
+    loadFx(),
+    activeUsers(),
+  ]);
+  const cur = fx.base;
   const elapsed = periodElapsedPct(period, today);
   const daysLeft = daysLeftInPeriod(period, today);
 
-  const areas = (Object.keys(AREA_LABEL) as Area[])
-    .map((a) => ({ area: a, progress: areaProgress(a, period, today) }))
-    .filter((a) => a.progress.objectives.length > 0);
+  const areas = (
+    await Promise.all(
+      (Object.keys(AREA_LABEL) as Area[]).map(async (a) => ({
+        area: a,
+        progress: await areaProgress(a, period, today, verFacturacion),
+      })),
+    )
+  ).filter((a) => a.progress.objectives.length > 0);
 
   // El equipo ve solo sus propios objetivos individuales. Dirección ve todos,
   // pero en orden fijo por persona: no es un ranking.
-  const people = (verTodos ? activeUsers() : activeUsers().filter((u) => u.id === user.id)).map((u) => ({
-    user: u,
-    progress: personProgress(u.id, period, today),
-  }));
+  const everyone = await activeUsers();
+  const people = await Promise.all(
+    (verTodos ? everyone : everyone.filter((u) => u.id === user.id)).map(async (u) => ({
+      user: u,
+      progress: await personProgress(u.id, period, today, verFacturacion),
+    })),
+  );
 
-  const metrics = METRICS.map((m) => ({
+  const metrics = selectableMetrics(verFacturacion).map((m) => ({
     key: m.key,
     label: m.label,
     unit: m.unit,
@@ -128,7 +144,7 @@ export default async function ObjetivosPage({
         />
         <StatCard label="Ritmo esperado" value={formatPct(elapsed)} hint="Según los días del período" />
         <StatCard label="Días restantes" value={daysLeft} />
-        <StatCard label="Objetivos cargados" value={listObjectives(period).length} />
+        <StatCard label="Objetivos cargados" value={allObjectives.length} />
       </div>
 
       <Card className="mt-4" title="Objetivos de empresa">
@@ -146,7 +162,7 @@ export default async function ObjetivosPage({
               </div>
               <ProgressBar pct={company.pct} expectedPct={elapsed} size="lg" />
             </div>
-            <ObjectiveTable rows={company.objectives} canDelete={editar} />
+            <ObjectiveTable rows={company.objectives} canDelete={editar} cur={cur} />
           </>
         )}
       </Card>
@@ -160,7 +176,7 @@ export default async function ObjetivosPage({
                   <h3 className="text-sm font-medium">{AREA_LABEL[area]}</h3>
                   <span className="tnum text-xs text-muted">{formatPct(progress.pct)}</span>
                 </div>
-                <ObjectiveTable rows={progress.objectives} canDelete={editar} />
+                <ObjectiveTable rows={progress.objectives} canDelete={editar} cur={cur} />
               </div>
             ))}
           </div>
@@ -195,7 +211,7 @@ export default async function ObjetivosPage({
                   </h3>
                   <span className="tnum text-xs text-muted">{formatPct(progress.pct)}</span>
                 </div>
-                <ObjectiveTable rows={progress.objectives} canDelete={editar} />
+                <ObjectiveTable rows={progress.objectives} canDelete={editar} cur={cur} />
               </div>
             ),
           )}
@@ -208,7 +224,7 @@ export default async function ObjetivosPage({
           title="Cargar objetivo"
           subtitle="El resultado nunca se carga a mano: se calcula desde el CRM, clientes, tareas y finanzas."
         >
-          <ObjectiveForm metrics={metrics} users={activeUsers()} period={period} />
+          <ObjectiveForm metrics={metrics} users={metricUsers} period={period} />
         </Card>
       )}
     </>

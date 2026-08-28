@@ -1,5 +1,5 @@
 import "server-only";
-import { getDb } from "../db";
+import { all, one } from "../db";
 import { monthOf, type DateRange } from "../dates";
 import { financeSummary, type FinanceSummary } from "./finance";
 import { computeFunnel, type FunnelResult } from "./funnel";
@@ -7,11 +7,11 @@ import { headlineObjective, type ObjectiveProgress } from "./objectives";
 import type { Health } from "../types";
 
 /**
- * Resumen general de dirección. Responde en 2 minutos las tres preguntas
+ * Resumen general de dirección. Responde en dos minutos las tres preguntas
  * que el dashboard tiene que responder:
- *   1. Como esta NetFlow      -> headline + finanzas + clientes
- *   2. Donde esta el cuello    -> bottleneck (etapa del funnel mas floja)
- *   3. Quien tiene la próxima  -> nextActions
+ *   1. Cómo está NetFlow      -> headline + finanzas + clientes
+ *   2. Dónde está el cuello    -> bottleneck (etapa del funnel más floja)
+ *   3. Quién tiene la próxima  -> nextActions
  */
 
 export interface Bottleneck {
@@ -44,7 +44,7 @@ export interface OverviewData {
   }[];
 }
 
-/** La conversión mas floja de la cadena, en puntos porcentuales. */
+/** La conversión más floja de la cadena, en puntos porcentuales. */
 export function findBottleneck(funnel: FunnelResult): Bottleneck | null {
   const steps = funnel.stages
     .map((s, i) => ({ s, prev: funnel.stages[i - 1] }))
@@ -61,61 +61,64 @@ export function findBottleneck(funnel: FunnelResult): Bottleneck | null {
   };
 }
 
-export function buildOverview(range: DateRange): OverviewData {
-  const db = getDb();
-  const finance = financeSummary(range);
-  const funnel = computeFunnel(range);
+export async function buildOverview(range: DateRange): Promise<OverviewData> {
   const period = monthOf(range.to);
 
-  const clientCounts = db
-    .prepare(
+  const [finance, funnel, headline, clientCounts, nextActions] = await Promise.all([
+    financeSummary(range),
+    computeFunnel(range),
+    headlineObjective(period),
+    one<Record<string, number | null>>(
       `SELECT
-         SUM(start_date <= ? AND (churned_at IS NULL OR churned_at > ?))                       AS active,
-         SUM(start_date BETWEEN ? AND ? AND churned_at IS NULL)                                AS newInRange,
-         SUM(churned_at BETWEEN ? AND ?)                                                       AS churnedInRange,
-         SUM(account_health = 'bien'     AND churned_at IS NULL)                               AS bien,
-         SUM(account_health = 'atencion' AND churned_at IS NULL)                               AS atencion,
-         SUM(account_health = 'riesgo'   AND churned_at IS NULL)                               AS riesgo,
-         SUM(payment_status <> 'al_dia'  AND churned_at IS NULL)                               AS pendingPayment
+         COUNT(*) FILTER (WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)) AS active,
+         COUNT(*) FILTER (WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL)          AS new_in_range,
+         COUNT(*) FILTER (WHERE churned_at BETWEEN ? AND ?)                                 AS churned_in_range,
+         COUNT(*) FILTER (WHERE account_health = 'bien'     AND churned_at IS NULL)         AS bien,
+         COUNT(*) FILTER (WHERE account_health = 'atencion' AND churned_at IS NULL)         AS atencion,
+         COUNT(*) FILTER (WHERE account_health = 'riesgo'   AND churned_at IS NULL)         AS riesgo,
+         COUNT(*) FILTER (WHERE payment_status <> 'al_dia'  AND churned_at IS NULL)         AS pending_payment
        FROM clients`,
-    )
-    .get(range.to, range.to, range.from, range.to, range.from, range.to) as Record<string, number | null>;
-
-  const n = (v: number | null | undefined) => Number(v ?? 0);
-
-  const nextActions = db
-    .prepare(
-      `SELECT u.id AS ownerId, u.name AS ownerName,
-              SUM(l.next_action_date IS NOT NULL AND l.next_action_date <  ?) AS overdue,
-              SUM(l.next_action_date =  ?)                                    AS today,
-              SUM(l.next_action_date IS NOT NULL AND l.next_action_date >  ?) AS upcoming,
-              SUM(l.next_action_date IS NULL OR trim(COALESCE(l.next_action,'')) = '') AS missing
+      [range.to, range.to, range.from, range.to, range.from, range.to],
+    ),
+    all<{
+      owner_id: number; owner_name: string;
+      overdue: number; today: number; upcoming: number; missing: number;
+    }>(
+      `SELECT u.id AS owner_id, u.name AS owner_name,
+              COUNT(*) FILTER (WHERE l.next_action_date IS NOT NULL AND l.next_action_date <  ?) AS overdue,
+              COUNT(*) FILTER (WHERE l.next_action_date = ?)                                     AS today,
+              COUNT(*) FILTER (WHERE l.next_action_date IS NOT NULL AND l.next_action_date >  ?) AS upcoming,
+              COUNT(*) FILTER (WHERE l.next_action_date IS NULL
+                                  OR trim(COALESCE(l.next_action,'')) = '')                      AS missing
        FROM leads l JOIN users u ON u.id = l.owner_id
        WHERE l.outcome = 'open'
        GROUP BY u.id, u.name ORDER BY u.id`,
-    )
-    .all(range.to, range.to, range.to) as OverviewData["nextActions"];
+      [range.to, range.to, range.to],
+    ),
+  ]);
+
+  const n = (v: number | null | undefined) => Number(v ?? 0);
 
   return {
     finance,
     funnel,
-    headline: headlineObjective(period),
+    headline,
     period,
     clients: {
-      active: n(clientCounts.active),
-      newInRange: n(clientCounts.newInRange),
-      churnedInRange: n(clientCounts.churnedInRange),
+      active: n(clientCounts?.active),
+      newInRange: n(clientCounts?.new_in_range),
+      churnedInRange: n(clientCounts?.churned_in_range),
       byHealth: {
-        bien: n(clientCounts.bien),
-        atencion: n(clientCounts.atencion),
-        riesgo: n(clientCounts.riesgo),
+        bien: n(clientCounts?.bien),
+        atencion: n(clientCounts?.atencion),
+        riesgo: n(clientCounts?.riesgo),
       },
-      pendingPayment: n(clientCounts.pendingPayment),
+      pendingPayment: n(clientCounts?.pending_payment),
     },
     bottleneck: findBottleneck(funnel),
     nextActions: nextActions.map((r) => ({
-      ownerId: r.ownerId,
-      ownerName: r.ownerName,
+      ownerId: r.owner_id,
+      ownerName: r.owner_name,
       overdue: n(r.overdue),
       today: n(r.today),
       upcoming: n(r.upcoming),

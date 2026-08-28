@@ -1,4 +1,6 @@
-import { requireAdmin } from "@/lib/auth";
+import { notFound } from "next/navigation";
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { resolveRange, formatDate } from "@/lib/dates";
 import { computeFunnel, leadsBySource } from "@/lib/metrics/funnel";
 import { findBottleneck } from "@/lib/metrics/overview";
@@ -23,7 +25,9 @@ export default async function FunnelPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
+  const user = await requireUser();
+  if (!can(user, "funnel:ver")) notFound();
+  const verFacturacion = can(user, "finanzas:ver");
   const sp = await searchParams;
   const range = resolveRange({
     preset: sp.preset as string,
@@ -31,12 +35,12 @@ export default async function FunnelPage({
     to: sp.to as string,
   });
 
-  const f = computeFunnel(range);
-  const sources = leadsBySource(range);
+  const f = await computeFunnel(range);
+  const sources = await leadsBySource(range);
   const bottleneck = findBottleneck(f);
   const cur = f.currency;
   const prev = previousRange(range);
-  const cmp = compareMetrics(["leads_totales", "cpl", "inversion"], range);
+  const cmp = await compareMetrics(["leads_totales", "cpl", "inversion"], range);
   const toDelta = (key: string): DeltaValue | undefined => {
     const c = cmp[key];
     return c ? { pct: c.pct, higherIsBetter: c.higherIsBetter, vs: c.vs } : undefined;
@@ -73,7 +77,7 @@ export default async function FunnelPage({
 
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="% de contacto" value={formatPct(f.rates.contacto)} />
-        <StatCard label="% de calificación" value={formatPct(f.rates.calificación)} />
+        <StatCard label="% de calificación" value={formatPct(f.rates.calificacion)} />
         <StatCard label="Lead → reunión" value={formatPct(f.rates.leadAReunion)} />
         <StatCard
           label="Show rate"
@@ -85,7 +89,9 @@ export default async function FunnelPage({
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Reunión → propuesta" value={formatPct(f.rates.reunionAPropuesta)} />
         <StatCard label="Reunión → cliente" value={formatPct(f.rates.reunionACliente)} />
-        <StatCard label="Revenue generado (MRR nuevo)" value={formatMoney(f.revenueCents, cur)} tone="ok" />
+        {verFacturacion && (
+          <StatCard label="Revenue generado (MRR nuevo)" value={formatMoney(f.revenueCents, cur)} tone="ok" />
+        )}
         <StatCard label="Clientes cerrados" value={f.cohort.clientes} tone="ok" />
       </div>
 

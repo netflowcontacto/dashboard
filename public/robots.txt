@@ -1,0 +1,3 @@
+# Herramienta interna de NetFlow: no se indexa.
+User-agent: *
+Disallow: /

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb, tx } from "@/lib/db";
+import { all, one, run, insert, tx } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { todayISO } from "@/lib/dates";
@@ -58,15 +58,13 @@ export async function createLead(_prev: ActionState, fd: FormData): Promise<Acti
     const stage = F.pick<Stage>(fd, "stage", STAGES, "nuevo");
     const now = nowStamp();
 
-    const info = getDb()
-      .prepare(
-        `INSERT INTO leads (
-           name, company, specialty, contact_email, contact_phone, source, entered_at,
-           owner_id, setter_id, closer_id, stage, next_action, next_action_date,
-           plan_interest, potential_value_cents, potential_currency, notes
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      )
-      .run(
+    const leadId = await insert(
+      `INSERT INTO leads (
+         name, company, specialty, contact_email, contact_phone, source, entered_at,
+         owner_id, setter_id, closer_id, stage, next_action, next_action_date,
+         plan_interest, potential_value_cents, potential_currency, notes
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+      [
         name,
         F.str(fd, "company"),
         F.str(fd, "specialty"),
@@ -84,17 +82,14 @@ export async function createLead(_prev: ActionState, fd: FormData): Promise<Acti
         parseAmountToCents(F.str(fd, "potential_value")) ?? 0,
         F.pick(fd, "potential_currency", CURRENCIES, "USD"),
         F.str(fd, "notes"),
-      );
+      ],
+    );
 
-    const leadId = Number(info.lastInsertRowid);
-    const timestamps = backfillTimestamps(stage, {}, now);
-    applyTimestamps(leadId, timestamps);
-
-    getDb()
-      .prepare(
-        `INSERT INTO lead_events (lead_id, type, to_stage, detail, user_id) VALUES (?,?,?,?,?)`,
-      )
-      .run(leadId, "cambio_etapa", stage, "Alta de la oportunidad", user.id);
+    await applyTimestamps(leadId, backfillTimestamps(stage, {}, now));
+    await run(
+      `INSERT INTO lead_events (lead_id, type, to_stage, detail, user_id) VALUES (?,?,?,?,?)`,
+      [leadId, "cambio_etapa", stage, "Alta de la oportunidad", user.id],
+    );
 
     revalidatePath("/crm");
     return { ok: "Oportunidad creada." };
@@ -103,13 +98,18 @@ export async function createLead(_prev: ActionState, fd: FormData): Promise<Acti
   }
 }
 
-function applyTimestamps(leadId: number, timestamps: Record<string, string | null>) {
+async function applyTimestamps(
+  leadId: number,
+  timestamps: Record<string, string | null>,
+  q?: { run(sql: string, params?: unknown[]): Promise<number> },
+) {
   const keys = Object.keys(timestamps);
   if (keys.length === 0) return;
   const sets = keys.map((k) => `${k} = ?`).join(", ");
-  getDb()
-    .prepare(`UPDATE leads SET ${sets} WHERE id = ?`)
-    .run(...keys.map((k) => timestamps[k]), leadId);
+  const sql = `UPDATE leads SET ${sets} WHERE id = ?`;
+  const params = [...keys.map((k) => timestamps[k]), leadId];
+  if (q) await q.run(sql, params);
+  else await run(sql, params);
 }
 
 export async function updateLead(_prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -120,8 +120,7 @@ export async function updateLead(_prev: ActionState, fd: FormData): Promise<Acti
   if (!id) return { error: "Oportunidad invalida." };
 
   try {
-    const db = getDb();
-    const current = db.prepare("SELECT * FROM leads WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const current = await one<Record<string, unknown>>("SELECT * FROM leads WHERE id = ?", [id]);
     if (!current) return { error: "La oportunidad no existe." };
 
     const outcome = F.pick(fd, "outcome", OUTCOMES, "open");
@@ -143,8 +142,8 @@ export async function updateLead(_prev: ActionState, fd: FormData): Promise<Acti
     const closedAt =
       outcome === "open" ? null : ((current.closed_at as string | null) ?? now);
 
-    tx(() => {
-      db.prepare(
+    await tx(async (q) => {
+      await q.run(
         `UPDATE leads SET
            name = ?, company = ?, specialty = ?, contact_email = ?, contact_phone = ?,
            source = ?, entered_at = ?, owner_id = ?, setter_id = ?, closer_id = ?,
@@ -153,9 +152,9 @@ export async function updateLead(_prev: ActionState, fd: FormData): Promise<Acti
            no_show_count = ?, recovered_from_noshow = ?,
            plan_interest = ?, potential_value_cents = ?, potential_currency = ?,
            proposal_sent_at = ?, outcome = ?, lost_reason = ?, closed_at = ?,
-           notes = ?, updated_at = datetime('now')
+           notes = ?, updated_at = nf_now()
          WHERE id = ?`,
-      ).run(
+        [
         F.str(fd, "name", String(current.name)),
         F.str(fd, "company"),
         F.str(fd, "specialty"),
@@ -187,17 +186,19 @@ export async function updateLead(_prev: ActionState, fd: FormData): Promise<Acti
         outcome,
         outcome === "lost" ? lostReason : null,
         closedAt,
-        F.str(fd, "notes"),
-        id,
+          F.str(fd, "notes"),
+          id,
+        ],
       );
 
-      applyTimestamps(id, backfillTimestamps(stage, current, now));
+      await applyTimestamps(id, backfillTimestamps(stage, current, now), q);
 
       if (current.stage !== stage) {
-        db.prepare(
+        await q.run(
           `INSERT INTO lead_events (lead_id, type, from_stage, to_stage, detail, user_id)
            VALUES (?,?,?,?,?,?)`,
-        ).run(id, "cambio_etapa", current.stage, stage, "", user.id);
+          [id, "cambio_etapa", current.stage, stage, "", user.id],
+        );
       }
     });
 
@@ -218,20 +219,20 @@ export async function moveStage(fd: FormData): Promise<void> {
   const stage = F.pick<Stage>(fd, "stage", STAGES, "nuevo");
   if (!id) return;
 
-  const db = getDb();
-  const current = db.prepare("SELECT * FROM leads WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  const current = await one<Record<string, unknown>>("SELECT * FROM leads WHERE id = ?", [id]);
   if (!current) return;
 
   // Ganado y perdido se cierran desde la ficha: necesitan cliente o motivo.
   if (stage === "ganado" || stage === "perdido") return;
 
   const now = nowStamp();
-  tx(() => {
-    db.prepare("UPDATE leads SET stage = ?, updated_at = datetime('now') WHERE id = ?").run(stage, id);
-    applyTimestamps(id, backfillTimestamps(stage, current, now));
-    db.prepare(
+  await tx(async (q) => {
+    await q.run("UPDATE leads SET stage = ?, updated_at = nf_now() WHERE id = ?", [stage, id]);
+    await applyTimestamps(id, backfillTimestamps(stage, current, now), q);
+    await q.run(
       `INSERT INTO lead_events (lead_id, type, from_stage, to_stage, user_id) VALUES (?,?,?,?,?)`,
-    ).run(id, "cambio_etapa", current.stage, stage, user.id);
+      [id, "cambio_etapa", current.stage, stage, user.id],
+    );
   });
 
   revalidatePath("/crm");
@@ -249,15 +250,17 @@ export async function logFollowUp(fd: FormData): Promise<void> {
   const nextAction = F.optStr(fd, "next_action");
   if (!id) return;
 
-  tx((db) => {
-    db.prepare(
+  await tx(async (q) => {
+    await q.run(
       `INSERT INTO lead_events (lead_id, type, detail, user_id) VALUES (?, 'follow_up', ?, ?)`,
-    ).run(id, detail, user.id);
-    db.prepare("UPDATE leads SET follow_up_count = follow_up_count + 1 WHERE id = ?").run(id);
+      [id, detail, user.id],
+    );
+    await q.run("UPDATE leads SET follow_up_count = follow_up_count + 1 WHERE id = ?", [id]);
     if (nextAction && nextDate) {
-      db.prepare(
-        "UPDATE leads SET next_action = ?, next_action_date = ?, updated_at = datetime('now') WHERE id = ?",
-      ).run(nextAction, nextDate, id);
+      await q.run(
+        "UPDATE leads SET next_action = ?, next_action_date = ?, updated_at = nf_now() WHERE id = ?",
+        [nextAction, nextDate, id],
+      );
     }
   });
 
@@ -278,8 +281,7 @@ export async function closeWon(_prev: ActionState, fd: FormData): Promise<Action
   if (!id) return { error: "Oportunidad invalida." };
 
   try {
-    const db = getDb();
-    const lead = db.prepare("SELECT * FROM leads WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const lead = await one<Record<string, unknown>>("SELECT * FROM leads WHERE id = ?", [id]);
     if (!lead) return { error: "La oportunidad no existe." };
 
     const feeCents = parseAmountToCents(F.str(fd, "fee"));
@@ -288,15 +290,13 @@ export async function closeWon(_prev: ActionState, fd: FormData): Promise<Action
     const startDate = F.date(fd, "start_date", todayISO());
     const now = nowStamp();
 
-    tx(() => {
-      const info = db
-        .prepare(
-          `INSERT INTO clients (
-             name, specialty, plan, fee_cents, fee_currency, start_date, next_charge_date,
-             paid_media_owner_id, setter_owner_id, dev_required, landing, onboarding_status, notes
-           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        )
-        .run(
+    await tx(async (q) => {
+      const clientId = await q.insert(
+        `INSERT INTO clients (
+           name, specialty, plan, fee_cents, fee_currency, start_date, next_charge_date,
+           paid_media_owner_id, setter_owner_id, dev_required, landing, onboarding_status, notes
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+        [
           F.str(fd, "client_name") || String(lead.company || lead.name),
           String(lead.specialty ?? ""),
           F.str(fd, "plan") || String(lead.plan_interest ?? ""),
@@ -310,22 +310,23 @@ export async function closeWon(_prev: ActionState, fd: FormData): Promise<Action
           F.bool(fd, "landing"),
           "pendiente",
           `Alta desde la oportunidad #${id}.`,
-        );
+        ],
+      );
 
-      const clientId = Number(info.lastInsertRowid);
-
-      db.prepare(
+      await q.run(
         `UPDATE leads SET outcome = 'won', stage = 'ganado', closed_at = ?, client_id = ?,
-                          lost_reason = NULL, updated_at = datetime('now')
+                          lost_reason = NULL, updated_at = nf_now()
          WHERE id = ?`,
-      ).run(now, clientId, id);
+        [now, clientId, id],
+      );
 
-      applyTimestamps(id, backfillTimestamps("propuesta", lead, now));
+      await applyTimestamps(id, backfillTimestamps("propuesta", lead, now), q);
 
-      db.prepare(
+      await q.run(
         `INSERT INTO lead_events (lead_id, type, from_stage, to_stage, detail, user_id)
          VALUES (?,?,?,?,?,?)`,
-      ).run(id, "cambio_etapa", lead.stage, "ganado", "Cliente dado de alta", user.id);
+        [id, "cambio_etapa", lead.stage, "ganado", "Cliente dado de alta", user.id],
+      );
     });
 
     revalidatePath("/crm");
@@ -347,17 +348,19 @@ export async function closeLost(_prev: ActionState, fd: FormData): Promise<Actio
   if (!reason) return { error: "Indica el motivo de perdida." };
 
   try {
-    tx((db) => {
-      const lead = db.prepare("SELECT stage FROM leads WHERE id = ?").get(id) as { stage: string } | undefined;
-      db.prepare(
+    await tx(async (q) => {
+      const lead = await q.one<{ stage: string }>("SELECT stage FROM leads WHERE id = ?", [id]);
+      await q.run(
         `UPDATE leads SET outcome = 'lost', stage = 'perdido', lost_reason = ?, closed_at = ?,
-                          updated_at = datetime('now')
+                          updated_at = nf_now()
          WHERE id = ?`,
-      ).run(reason, nowStamp(), id);
-      db.prepare(
+        [reason, nowStamp(), id],
+      );
+      await q.run(
         `INSERT INTO lead_events (lead_id, type, from_stage, to_stage, detail, user_id)
          VALUES (?,?,?,?,?,?)`,
-      ).run(id, "cambio_etapa", lead?.stage ?? null, "perdido", reason, user.id);
+        [id, "cambio_etapa", lead?.stage ?? null, "perdido", reason, user.id],
+      );
     });
 
     revalidatePath("/crm");
@@ -376,13 +379,12 @@ export async function reopenLead(fd: FormData): Promise<void> {
   const nextDate = F.optDate(fd, "next_action_date") ?? todayISO();
   if (!id) return;
 
-  getDb()
-    .prepare(
-      `UPDATE leads SET outcome = 'open', stage = 'follow_up', lost_reason = NULL, closed_at = NULL,
-                        next_action = ?, next_action_date = ?, updated_at = datetime('now')
-       WHERE id = ?`,
-    )
-    .run(nextAction, nextDate, id);
+  await run(
+    `UPDATE leads SET outcome = 'open', stage = 'follow_up', lost_reason = NULL, closed_at = NULL,
+                      next_action = ?, next_action_date = ?, updated_at = nf_now()
+     WHERE id = ?`,
+    [nextAction, nextDate, id],
+  );
 
   revalidatePath(`/crm/${id}`);
   revalidatePath("/crm");

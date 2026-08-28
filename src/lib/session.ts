@@ -1,7 +1,8 @@
 import "server-only";
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
-import { getDb } from "./db";
+import { one, getSetting } from "./db";
+import type { Viewer } from "./permissions";
 import type { User } from "./types";
 
 const COOKIE = "netflow_session";
@@ -11,7 +12,7 @@ function secret(): string {
   const s = process.env.SESSION_SECRET;
   if (!s || s.length < 16) {
     if (process.env.NODE_ENV === "production") {
-      throw new Error("SESSION_SECRET no esta configurado (ver .env.example)");
+      throw new Error("SESSION_SECRET no está configurado (ver .env.example)");
     }
     return "netflow-dev-secret-no-usar-en-produccion";
   }
@@ -57,14 +58,28 @@ export async function destroySession(): Promise<void> {
   (await cookies()).delete(COOKIE);
 }
 
-/** Usuario logueado, o null. No redirige. */
-export async function getCurrentUser(): Promise<User | null> {
+/** Modo de visibilidad del equipo. Por defecto, transparente. */
+export async function visibilityIsOpen(): Promise<boolean> {
+  return (await getSetting("visibilidad_equipo", "abierta")) !== "restringida";
+}
+
+/**
+ * Persona logueada con su modo de visibilidad ya resuelto, o null.
+ * No redirige.
+ */
+export async function getCurrentUser(): Promise<Viewer | null> {
   const token = (await cookies()).get(COOKIE)?.value;
   const userId = verify(token);
   if (!userId) return null;
 
-  const user = getDb()
-    .prepare("SELECT id, name, email, role, area, job_title, active FROM users WHERE id = ? AND active = 1")
-    .get(userId) as User | undefined;
-  return user ?? null;
+  const [user, open] = await Promise.all([
+    one<User>(
+      "SELECT id, name, email, role, area, job_title, active FROM users WHERE id = ? AND active = 1",
+      [userId],
+    ),
+    visibilityIsOpen(),
+  ]);
+
+  if (!user) return null;
+  return { ...user, canViewAll: open };
 }

@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { clientById, usersList, userMap } from "@/lib/queries";
-import { getDb } from "@/lib/db";
+import { all } from "@/lib/db";
 import { formatDate, todayISO } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { Badge, Card, EmptyState, PageHeader, Semaforo } from "@/components/ui";
 import ClientForm, { AccountHealthForm } from "../ClientForm";
+import Attachments from "@/components/Attachments";
+import { listAttachments } from "@/actions/attachments";
 import { PAYMENT_STATUS_LABEL, INVOICE_STATUS_LABEL, TASK_CATEGORY_LABEL, TASK_STATUS_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -15,28 +17,27 @@ export const dynamic = "force-dynamic";
 export default async function ClienteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await params;
-  const client = clientById(Number(id));
+  const client = await clientById(Number(id));
   if (!client) notFound();
 
   const verFees = can(user, "clientes:ver_fees");
-  const users = usersList();
-  const map = userMap();
+  const attachments = await listAttachments("client", client.id);
+  const puedeAdjuntar = can(user, "archivos:subir");
+  const users = await usersList();
+  const map = await userMap();
 
   const invoices = verFees
-    ? (getDb()
-        .prepare("SELECT * FROM invoices WHERE client_id = ? ORDER BY issued_at DESC LIMIT 12")
-        .all(client.id) as {
+    ? await all<{
         id: number; period: string; concept: string; amount_cents: number;
         currency: "ARS" | "USD"; issued_at: string; status: string; paid_at: string | null;
-      }[])
+      }>("SELECT * FROM invoices WHERE client_id = ? ORDER BY issued_at DESC LIMIT 12", [client.id])
     : [];
 
-  const tasks = getDb()
-    .prepare(
+  const tasks = await all<{ id: number; title: string; status: string; due_date: string | null; category: string }>(
       `SELECT id, title, status, due_date, category FROM tasks
        WHERE client_id = ? ORDER BY status = 'hecho', COALESCE(due_date,'9999-12-31') LIMIT 10`,
-    )
-    .all(client.id) as { id: number; title: string; status: string; due_date: string | null; category: string }[];
+      [client.id],
+    );
 
   return (
     <>
@@ -70,8 +71,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
             ) : (
               <>
                 <p className="mb-4 text-sm text-muted">
-                  Podes actualizar el estado operativo de la cuenta. La información comercial y de cobro la
-                  gestiona dirección.
+                  Estado operativo de la cuenta: semáforo, onboarding y alertas.
                 </p>
                 <AccountHealthForm client={client} />
               </>
@@ -110,6 +110,10 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
               )}
             </Card>
           )}
+
+          <Card title="Archivos" subtitle="Contratos, accesos, material de la cuenta.">
+            <Attachments kind="client" ownerId={client.id} items={attachments} canEdit={puedeAdjuntar} />
+          </Card>
 
           <Card title="Trabajo asociado">
             {tasks.length === 0 ? (

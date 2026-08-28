@@ -1,9 +1,9 @@
 import "server-only";
-import { getDb, getSetting } from "./db";
+import { all, one, getSetting } from "./db";
 import { addDays, monthOf, todayISO } from "./dates";
 import { companyProgress, periodElapsedPct } from "./metrics/objectives";
 import { can } from "./permissions";
-import type { User } from "./types";
+import type { Viewer } from "./permissions";
 
 /**
  * Alertas.
@@ -31,28 +31,25 @@ export interface Alert {
   ownerName: string | null;
 }
 
-function hoursSetting(key: string, fallback: number): number {
-  const v = Number(getSetting(key, String(fallback)));
+async function numberSetting(key: string, fallback: number): Promise<number> {
+  const v = Number(await getSetting(key, String(fallback)));
   return Number.isFinite(v) && v > 0 ? v : fallback;
 }
 
-export function computeAlerts(asOf = todayISO()): Alert[] {
-  const db = getDb();
+export async function computeAlerts(asOf = todayISO()): Promise<Alert[]> {
   const alerts: Alert[] = [];
-  const slaHours = hoursSetting("sla_primer_contacto_horas", 24);
+  const slaHours = await numberSetting("sla_primer_contacto_horas", 24);
 
   // --- Lead sin contactar dentro del SLA ---
-  const uncontacted = db
-    .prepare(
+  const uncontacted = await all<{ id: number; name: string; owner_id: number; owner_name: string | null; horas: number }>(
       `SELECT l.id, l.name, l.owner_id, u.name AS owner_name,
-              round((julianday(?) - julianday(l.created_at)) * 24.0) AS horas
+              round(EXTRACT(EPOCH FROM (?::timestamp - l.created_at::timestamp)) / 3600.0) AS horas
        FROM leads l LEFT JOIN users u ON u.id = l.owner_id
        WHERE l.outcome = 'open' AND l.first_contacted_at IS NULL
-         AND (julianday(?) - julianday(l.created_at)) * 24.0 >= ?
+         AND EXTRACT(EPOCH FROM (?::timestamp - l.created_at::timestamp)) / 3600.0 >= ?
        ORDER BY l.created_at`,
-    )
-    .all(`${asOf} 23:59:59`, `${asOf} 23:59:59`, slaHours) as
-    { id: number; name: string; owner_id: number; owner_name: string | null; horas: number }[];
+      [`${asOf} 23:59:59`, `${asOf} 23:59:59`, slaHours],
+  );
 
   for (const l of uncontacted) {
     alerts.push({
@@ -69,14 +66,13 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Lead abierto sin próxima acción (la base ya lo impide, esto detecta datos viejos) ---
-  const noNextAction = db
-    .prepare(
+  const noNextAction = await all<{ id: number; name: string; owner_id: number; owner_name: string | null }>(
       `SELECT l.id, l.name, l.owner_id, u.name AS owner_name
        FROM leads l LEFT JOIN users u ON u.id = l.owner_id
        WHERE l.outcome = 'open'
          AND (l.next_action IS NULL OR trim(l.next_action) = '' OR l.next_action_date IS NULL)`,
-    )
-    .all() as { id: number; name: string; owner_id: number; owner_name: string | null }[];
+      [],
+  );
 
   for (const l of noNextAction) {
     alerts.push({
@@ -93,17 +89,16 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Próxima acción vencida ---
-  const overdue = db
-    .prepare(
+  const overdue = await all<{
+      id: number; name: string; next_action: string; next_action_date: string;
+      owner_id: number; owner_name: string | null;
+    }>(
       `SELECT l.id, l.name, l.next_action, l.next_action_date, l.owner_id, u.name AS owner_name
        FROM leads l LEFT JOIN users u ON u.id = l.owner_id
        WHERE l.outcome = 'open' AND l.next_action_date IS NOT NULL AND l.next_action_date < ?
        ORDER BY l.next_action_date`,
-    )
-    .all(asOf) as {
-      id: number; name: string; next_action: string; next_action_date: string;
-      owner_id: number; owner_name: string | null;
-    }[];
+      [asOf],
+  );
 
   for (const l of overdue) {
     alerts.push({
@@ -120,16 +115,14 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Reunión próxima (48 h) ---
-  const upcoming = db
-    .prepare(
+  const upcoming = await all<{ id: number; name: string; meeting_at: string; closer_id: number | null; owner_name: string | null }>(
       `SELECT l.id, l.name, l.meeting_at, l.closer_id, u.name AS owner_name
        FROM leads l LEFT JOIN users u ON u.id = l.closer_id
        WHERE l.meeting_outcome = 'agendada'
          AND substr(l.meeting_at,1,10) BETWEEN ? AND ?
        ORDER BY l.meeting_at`,
-    )
-    .all(asOf, addDays(asOf, 2)) as
-    { id: number; name: string; meeting_at: string; closer_id: number | null; owner_name: string | null }[];
+      [asOf, addDays(asOf, 2)],
+  );
 
   for (const l of upcoming) {
     alerts.push({
@@ -146,13 +139,12 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- No-show sin recuperar ---
-  const noShows = db
-    .prepare(
+  const noShows = await all<{ id: number; name: string; setter_id: number | null; owner_name: string | null }>(
       `SELECT l.id, l.name, l.setter_id, u.name AS owner_name
        FROM leads l LEFT JOIN users u ON u.id = l.setter_id
        WHERE l.meeting_outcome = 'no_show' AND l.recovered_from_noshow = 0 AND l.outcome = 'open'`,
-    )
-    .all() as { id: number; name: string; setter_id: number | null; owner_name: string | null }[];
+      [],
+  );
 
   for (const l of noShows) {
     alerts.push({
@@ -169,9 +161,10 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Propuesta sin follow-up ---
-  const followUpDays = hoursSetting("dias_follow_up_propuesta", 5);
-  const staleProposals = db
-    .prepare(
+  const followUpDays = await numberSetting("dias_follow_up_propuesta", 5);
+  const staleProposals = await all<{
+      id: number; name: string; proposal_sent_at: string; owner_id: number; owner_name: string | null;
+    }>(
       `SELECT l.id, l.name, l.proposal_sent_at, l.owner_id, u.name AS owner_name
        FROM leads l LEFT JOIN users u ON u.id = l.owner_id
        WHERE l.outcome = 'open' AND l.proposal_sent_at IS NOT NULL
@@ -180,10 +173,8 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
            SELECT 1 FROM lead_events e
            WHERE e.lead_id = l.id AND e.type = 'follow_up' AND e.at > l.proposal_sent_at
          )`,
-    )
-    .all(addDays(asOf, -followUpDays)) as {
-      id: number; name: string; proposal_sent_at: string; owner_id: number; owner_name: string | null;
-    }[];
+      [addDays(asOf, -followUpDays)],
+  );
 
   for (const l of staleProposals) {
     alerts.push({
@@ -200,12 +191,11 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Clientes: pago pendiente / cuenta en riesgo ---
-  const paymentIssues = db
-    .prepare(
+  const paymentIssues = await all<{ id: number; name: string; payment_status: string; next_charge_date: string | null }>(
       `SELECT id, name, payment_status, next_charge_date FROM clients
        WHERE churned_at IS NULL AND payment_status <> 'al_dia'`,
-    )
-    .all() as { id: number; name: string; payment_status: string; next_charge_date: string | null }[];
+      [],
+  );
 
   for (const c of paymentIssues) {
     alerts.push({
@@ -221,12 +211,11 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
     });
   }
 
-  const atRisk = db
-    .prepare(
+  const atRisk = await all<{ id: number; name: string; account_health: string; alerts_note: string }>(
       `SELECT id, name, account_health, alerts_note FROM clients
        WHERE churned_at IS NULL AND account_health <> 'bien'`,
-    )
-    .all() as { id: number; name: string; account_health: string; alerts_note: string }[];
+      [],
+  );
 
   for (const c of atRisk) {
     alerts.push({
@@ -243,12 +232,11 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Onboarding trabado ---
-  const onboarding = db
-    .prepare(
+  const onboarding = await all<{ id: number; name: string; start_date: string }>(
       `SELECT id, name, start_date FROM clients
        WHERE churned_at IS NULL AND onboarding_status <> 'completo' AND start_date <= ?`,
-    )
-    .all(addDays(asOf, -14)) as { id: number; name: string; start_date: string }[];
+      [addDays(asOf, -14)],
+  );
 
   for (const c of onboarding) {
     alerts.push({
@@ -265,16 +253,15 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Tareas vencidas y bloqueos ---
-  const lateTasks = db
-    .prepare(
+  const lateTasks = await all<{
+      id: number; title: string; due_date: string; assignee_id: number | null; owner_name: string | null;
+    }>(
       `SELECT t.id, t.title, t.due_date, t.assignee_id, u.name AS owner_name
        FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
        WHERE t.status IN ('pendiente','en_curso','bloqueado')
          AND t.due_date IS NOT NULL AND t.due_date < ?`,
-    )
-    .all(asOf) as {
-      id: number; title: string; due_date: string; assignee_id: number | null; owner_name: string | null;
-    }[];
+      [asOf],
+  );
 
   for (const t of lateTasks) {
     alerts.push({
@@ -290,15 +277,14 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
     });
   }
 
-  const blocked = db
-    .prepare(
+  const blocked = await all<{
+      id: number; title: string; blocker: string; assignee_id: number | null; owner_name: string | null;
+    }>(
       `SELECT t.id, t.title, t.blocker, t.assignee_id, u.name AS owner_name
        FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
        WHERE t.status = 'bloqueado'`,
-    )
-    .all() as {
-      id: number; title: string; blocker: string; assignee_id: number | null; owner_name: string | null;
-    }[];
+      [],
+  );
 
   for (const t of blocked) {
     alerts.push({
@@ -316,7 +302,7 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
 
   // --- Objetivo mensual atrasado ---
   const period = monthOf(asOf);
-  const company = companyProgress(period, asOf);
+  const company = await companyProgress(period, asOf);
   const elapsed = periodElapsedPct(period, asOf);
   for (const o of company.objectives) {
     if (o.pct !== null && o.pct < elapsed - 15) {
@@ -335,19 +321,19 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
   }
 
   // --- Campaña sin resultado: inversión sin leads ---
-  const badCampaigns = db
-    .prepare(
+  const badCampaigns = await all<{ campaign: string; cents: number }>(
       `SELECT campaign, SUM(amount_cents) AS cents FROM expenses
        WHERE category = 'paid_media' AND campaign <> '' AND date BETWEEN ? AND ?
        GROUP BY campaign`,
-    )
-    .all(addDays(asOf, -7), asOf) as { campaign: string; cents: number }[];
+      [addDays(asOf, -7), asOf],
+  );
 
   if (badCampaigns.length > 0) {
-    const leadsLastWeek = db
-      .prepare(`SELECT COUNT(*) AS n FROM leads WHERE entered_at BETWEEN ? AND ?`)
-      .get(addDays(asOf, -7), asOf) as { n: number };
-    if (leadsLastWeek.n === 0) {
+    const leadsLastWeek = await one<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM leads WHERE entered_at BETWEEN ? AND ?`,
+      [addDays(asOf, -7), asOf],
+    );
+    if (Number(leadsLastWeek?.n ?? 0) === 0) {
       alerts.push({
         id: "campana_sin_leads",
         kind: "campana_con_problema",
@@ -377,11 +363,13 @@ function fmtNum(v: number | null): string {
  *  - equipo: nunca las financieras; y solo las que le corresponden a esa
  *    persona o las que no tienen responsable asignado (avisos generales).
  */
-export function alertsFor(user: User, asOf = todayISO()): Alert[] {
-  const all = computeAlerts(asOf);
-  if (can(user, "finanzas:ver")) return all;
-  return all.filter(
-    (a) => a.visibility === "todos" && (a.ownerId === null || a.ownerId === user.id),
+export async function alertsFor(viewer: Viewer, asOf = todayISO()): Promise<Alert[]> {
+  const alerts = await computeAlerts(asOf);
+  // Con visibilidad abierta todo el equipo ve todas las alertas. En modo
+  // restringido, cada persona ve las suyas y las que no tienen responsable.
+  if (can(viewer, "finanzas:ver")) return alerts;
+  return alerts.filter(
+    (a) => a.visibility === "todos" && (a.ownerId === null || a.ownerId === viewer.id),
   );
 }
 

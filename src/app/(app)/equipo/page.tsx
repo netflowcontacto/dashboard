@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { resolveRange, monthOf, formatPeriod } from "@/lib/dates";
 import { teamPerformance } from "@/lib/metrics/team";
-import { baseCurrency } from "@/lib/fx";
+import { loadFx } from "@/lib/fx";
 import { AREA_LABEL } from "@/lib/types";
 import { Badge, Card, EmptyState, PageHeader, ProgressBar, formatMetric, formatPct } from "@/components/ui";
 import RangePicker from "@/components/RangePicker";
@@ -55,9 +55,10 @@ export default async function EquipoPage({
     to: sp.to as string,
   });
 
-  const team = teamPerformance(range);
+  const verFacturacion = can(user, "finanzas:ver");
+  const team = await teamPerformance(range, verFacturacion);
   const period = monthOf(range.to);
-  const cur = baseCurrency();
+  const cur = (await loadFx()).base;
 
   return (
     <>

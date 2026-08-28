@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { all } from "@/lib/db";
 import { clientsList, usersList, userMap } from "@/lib/queries";
 import { formatDate, todayISO } from "@/lib/dates";
 import { Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui";
@@ -42,20 +42,19 @@ export default async function TareasPage({
     params.push(category);
   }
 
-  const tasks = getDb()
-    .prepare(
-      `SELECT t.*, c.name AS client_name FROM tasks t
-       LEFT JOIN clients c ON c.id = t.client_id
-       WHERE ${clauses.join(" AND ")}
-       ORDER BY t.status = 'hecho', COALESCE(t.due_date, '9999-12-31'), t.id DESC`,
-    )
-    .all(...params) as {
-      id: number; title: string; description: string; category: string; assignee_id: number | null;
-      status: string; priority: string; due_date: string | null; blocker: string;
-      client_name: string | null; channel: string; planned_date: string | null; published_at: string | null;
-    }[];
+  const tasks = await all<{
+    id: number; title: string; description: string; category: string; assignee_id: number | null;
+    status: string; priority: string; due_date: string | null; blocker: string;
+    client_name: string | null; channel: string; planned_date: string | null; published_at: string | null;
+  }>(
+    `SELECT t.*, c.name AS client_name FROM tasks t
+     LEFT JOIN clients c ON c.id = t.client_id
+     WHERE ${clauses.join(" AND ")}
+     ORDER BY (t.status = 'hecho'), COALESCE(t.due_date, '9999-12-31'), t.id DESC`,
+    params,
+  );
 
-  const users = userMap();
+  const users = await userMap();
   const today = todayISO();
   const open = tasks.filter((t) => t.status !== "hecho");
   const overdue = open.filter((t) => t.due_date !== null && t.due_date < today);
@@ -154,7 +153,7 @@ export default async function TareasPage({
       </Card>
 
       <Card className="mt-4" title="Nueva tarea">
-        <TaskForm users={usersList()} clients={clientsList()} defaultAssignee={user.id} />
+        <TaskForm users={await usersList()} clients={await clientsList()} defaultAssignee={user.id} />
       </Card>
     </>
   );

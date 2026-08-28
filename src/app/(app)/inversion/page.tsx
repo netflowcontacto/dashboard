@@ -1,10 +1,10 @@
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { getDb } from "@/lib/db";
+import { all } from "@/lib/db";
 import { resolveRange, formatDate, todayISO } from "@/lib/dates";
 import { areaMetrics } from "@/lib/metrics/team";
 import { formatMoney } from "@/lib/money";
-import { baseCurrency } from "@/lib/fx";
+import { loadFx } from "@/lib/fx";
 import { clientsList } from "@/lib/queries";
 import type { Currency } from "@/lib/types";
 import { Card, EmptyState, PageHeader, StatCard, formatMetric } from "@/components/ui";
@@ -43,29 +43,27 @@ export default async function InversionPage({
     to: sp.to as string,
   });
 
-  const metrics = areaMetrics("paid_media", range, null);
-  const cur = baseCurrency();
+  const metrics = await areaMetrics("paid_media", range, null);
+  const cur = (await loadFx()).base;
 
-  const spend = getDb()
-    .prepare(
-      `SELECT id, concept, amount_cents, currency, date, platform, campaign, vendor
-       FROM expenses WHERE category = 'paid_media' AND date BETWEEN ? AND ?
-       ORDER BY date DESC, id DESC LIMIT 60`,
-    )
-    .all(range.from, range.to) as {
-      id: number; concept: string; amount_cents: number; currency: Currency;
-      date: string; platform: string; campaign: string; vendor: string;
-    }[];
+  const spend = await all<{
+    id: number; concept: string; amount_cents: number; currency: Currency;
+    date: string; platform: string; campaign: string; vendor: string;
+  }>(
+    `SELECT id, concept, amount_cents, currency, date, platform, campaign, vendor
+     FROM expenses WHERE category = 'paid_media' AND date BETWEEN ? AND ?
+     ORDER BY date DESC, id DESC LIMIT 60`,
+    [range.from, range.to],
+  );
 
-  const assets = getDb()
-    .prepare(
-      `SELECT id, name, kind, platform, campaign, date, result FROM campaign_assets
-       WHERE date BETWEEN ? AND ? ORDER BY date DESC, id DESC LIMIT 40`,
-    )
-    .all(range.from, range.to) as {
-      id: number; name: string; kind: string; platform: string; campaign: string;
-      date: string; result: string;
-    }[];
+  const assets = await all<{
+    id: number; name: string; kind: string; platform: string; campaign: string;
+    date: string; result: string;
+  }>(
+    `SELECT id, name, kind, platform, campaign, date, result FROM campaign_assets
+     WHERE date BETWEEN ? AND ? ORDER BY date DESC, id DESC LIMIT 40`,
+    [range.from, range.to],
+  );
 
   return (
     <>
@@ -84,7 +82,7 @@ export default async function InversionPage({
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card title="Cargar inversión">
-          <ExpenseForm clients={clientsList()} today={todayISO()} onlyPaidMedia />
+          <ExpenseForm clients={await clientsList()} today={todayISO()} onlyPaidMedia />
         </Card>
         <Card title="Registrar creativo o test">
           <CampaignAssetForm today={todayISO()} />

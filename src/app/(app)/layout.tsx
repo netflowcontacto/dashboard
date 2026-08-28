@@ -14,7 +14,7 @@ import Nav, { type NavItem } from "@/components/Nav";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const admin = isAdmin(user);
-  const alertCount = alertsFor(user).filter((a) => a.severity !== "info").length;
+  const alertCount = (await alertsFor(user)).filter((a) => a.severity !== "info").length;
 
   const items: NavItem[] = [];
 

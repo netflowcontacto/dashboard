@@ -1,5 +1,5 @@
 export type Role = "admin" | "member";
-export type Area = "direccion" | "closer" | "paid_media" | "setter" | "desarrollo";
+export type Area = "direccion" | "closer" | "paid_media" | "setter" | "desarrollo" | "marketing";
 export type Currency = "ARS" | "USD";
 
 export type Stage =
@@ -39,11 +39,12 @@ export const STAGE_LABEL: Record<Stage, string> = {
 };
 
 export const AREA_LABEL: Record<Area, string> = {
-  direccion: "Dirección / Marketing / Gestión",
-  closer: "CEO / Closer",
+  direccion: "Dirección y gestión",
+  closer: "Closer",
   paid_media: "Paid Media",
   setter: "Setter",
   desarrollo: "Desarrollo",
+  marketing: "Marketing y contenido",
 };
 
 export const EXPENSE_CATEGORIES = [

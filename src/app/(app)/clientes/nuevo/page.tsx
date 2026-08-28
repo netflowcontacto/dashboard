@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdminOr404 } from "@/lib/auth";
 import { usersList } from "@/lib/queries";
 import { todayISO } from "@/lib/dates";
 import { Card, PageHeader } from "@/components/ui";
@@ -8,7 +8,7 @@ import ClientForm from "../ClientForm";
 export const dynamic = "force-dynamic";
 
 export default async function NuevoClientePage() {
-  await requireAdmin();
+  await requireAdminOr404();
   return (
     <>
       <PageHeader
@@ -20,7 +20,7 @@ export default async function NuevoClientePage() {
         </Link>
       </PageHeader>
       <Card>
-        <ClientForm users={usersList()} today={todayISO()} />
+        <ClientForm users={await usersList()} today={todayISO()} />
       </Card>
     </>
   );

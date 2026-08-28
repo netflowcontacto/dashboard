@@ -1,12 +1,11 @@
 import "server-only";
-import { getDb } from "../db";
-import { fxRate, baseCurrency, toBase } from "../fx";
+import { all } from "../db";
+import { loadFx, toBase, type Fx } from "../fx";
 import { addDays, monthOf, type DateRange } from "../dates";
 import type { Currency } from "../types";
 
 /**
- * Motor financiero. TODO lo que sale de acá es información sensible:
- * solo se consume desde páginas protegidas con requireAdmin().
+ * Motor financiero.
  *
  * Regla de consolidación: cada fila se guarda en su moneda original y se
  * convierte a la moneda base al sumar, con el tipo de cambio de referencia.
@@ -17,15 +16,12 @@ interface MoneyRow {
   currency: Currency;
 }
 
-function consolidate(rows: MoneyRow[]): number {
-  const rate = fxRate();
-  const base = baseCurrency();
-  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, rate, base), 0);
+function consolidate(rows: MoneyRow[], fx: Fx): number {
+  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, fx), 0);
 }
 
 export interface FinanceSummary {
   currency: Currency;
-  /** Facturación emitida en el rango (devengado) */
   billedCents: number;
   collectedCents: number;
   pendingCents: number;
@@ -54,73 +50,67 @@ export interface FinanceSummary {
   runwayMonths: number | null;
 }
 
-export function financeSummary(range: DateRange): FinanceSummary {
-  const db = getDb();
+export async function financeSummary(range: DateRange): Promise<FinanceSummary> {
   const { from, to } = range;
-  const base = baseCurrency();
+  const fx = await loadFx();
 
-  const billed = db
-    .prepare(`SELECT amount_cents AS cents, currency FROM invoices WHERE issued_at BETWEEN ? AND ?`)
-    .all(from, to) as MoneyRow[];
-  const collected = db
-    .prepare(
-      `SELECT amount_cents AS cents, currency FROM invoices
-       WHERE status = 'cobrada' AND substr(paid_at,1,10) BETWEEN ? AND ?`,
-    )
-    .all(from, to) as MoneyRow[];
-  const pending = db
-    .prepare(
-      `SELECT amount_cents AS cents, currency FROM invoices
-       WHERE status = 'pendiente' AND issued_at <= ?`,
-    )
-    .all(to) as MoneyRow[];
+  const [billed, collected, pending, expenses, activeClientRows, newClientRows, cashCents, burnPerMonthCents] =
+    await Promise.all([
+      all<MoneyRow>(
+        `SELECT amount_cents AS cents, currency FROM invoices WHERE issued_at BETWEEN ? AND ?`,
+        [from, to],
+      ),
+      all<MoneyRow>(
+        `SELECT amount_cents AS cents, currency FROM invoices
+         WHERE status = 'cobrada' AND substr(paid_at,1,10) BETWEEN ? AND ?`,
+        [from, to],
+      ),
+      all<MoneyRow>(
+        `SELECT amount_cents AS cents, currency FROM invoices
+         WHERE status = 'pendiente' AND issued_at <= ?`,
+        [to],
+      ),
+      all<MoneyRow & { cost_type: string; direct_cost: number; status: string }>(
+        `SELECT amount_cents AS cents, currency, cost_type, direct_cost, status
+         FROM expenses WHERE date BETWEEN ? AND ?`,
+        [from, to],
+      ),
+      all<MoneyRow>(
+        `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
+         WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
+        [to, to],
+      ),
+      all<MoneyRow>(
+        `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
+         WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL`,
+        [from, to],
+      ),
+      cashAvailableCents(to, fx),
+      averageMonthlyBurnCents(to, fx),
+    ]);
 
-  const expenses = db
-    .prepare(
-      `SELECT amount_cents AS cents, currency, cost_type, direct_cost, status
-       FROM expenses WHERE date BETWEEN ? AND ?`,
-    )
-    .all(from, to) as (MoneyRow & { cost_type: string; direct_cost: number; status: string })[];
-
-  const directCostsCents = consolidate(expenses.filter((e) => e.direct_cost === 1));
-  const operatingExpensesCents = consolidate(expenses.filter((e) => e.direct_cost === 0));
-  const totalExpensesCents = directCostsCents + operatingExpensesCents;
-
-  // Clientes activos al cierre del rango
-  const activeClientRows = db
-    .prepare(
-      `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
-       WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
-    )
-    .all(to, to) as MoneyRow[];
-  const mrrCents = consolidate(activeClientRows);
+  const directCostsCents = consolidate(expenses.filter((e) => e.direct_cost === 1), fx);
+  const operatingExpensesCents = consolidate(expenses.filter((e) => e.direct_cost === 0), fx);
+  const mrrCents = consolidate(activeClientRows, fx);
   const activeClients = activeClientRows.length;
 
-  const newClientRows = db
-    .prepare(
-      `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
-       WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL`,
-    )
-    .all(from, to) as MoneyRow[];
-  const newMrrCents = consolidate(newClientRows);
-
-  const billedCents = consolidate(billed);
+  const billedCents = consolidate(billed, fx);
   const resultCents = billedCents - directCostsCents - operatingExpensesCents;
   const grossMarginCents = billedCents - directCostsCents;
 
   return {
-    currency: base,
+    currency: fx.base,
     billedCents,
-    collectedCents: consolidate(collected),
-    pendingCents: consolidate(pending),
+    collectedCents: consolidate(collected, fx),
+    pendingCents: consolidate(pending, fx),
     mrrCents,
-    newMrrCents,
+    newMrrCents: consolidate(newClientRows, fx),
     directCostsCents,
     operatingExpensesCents,
-    totalExpensesCents,
-    fixedCostsCents: consolidate(expenses.filter((e) => e.cost_type === "fijo")),
-    variableCostsCents: consolidate(expenses.filter((e) => e.cost_type === "variable")),
-    unpaidExpensesCents: consolidate(expenses.filter((e) => e.status === "pendiente")),
+    totalExpensesCents: directCostsCents + operatingExpensesCents,
+    fixedCostsCents: consolidate(expenses.filter((e) => e.cost_type === "fijo"), fx),
+    variableCostsCents: consolidate(expenses.filter((e) => e.cost_type === "variable"), fx),
+    unpaidExpensesCents: consolidate(expenses.filter((e) => e.status === "pendiente"), fx),
     resultCents,
     grossMarginCents,
     grossMarginPct: billedCents > 0 ? (grossMarginCents / billedCents) * 100 : null,
@@ -128,41 +118,41 @@ export function financeSummary(range: DateRange): FinanceSummary {
     activeClients,
     operatingCostPerClientCents: activeClients > 0 ? Math.round(operatingExpensesCents / activeClients) : null,
     averageTicketCents: activeClients > 0 ? Math.round(mrrCents / activeClients) : null,
-    cashCents: cashAvailableCents(to),
-    burnPerMonthCents: averageMonthlyBurnCents(to),
-    runwayMonths: runwayMonths(to),
+    cashCents,
+    burnPerMonthCents,
+    runwayMonths: burnPerMonthCents > 0 ? cashCents / burnPerMonthCents : null,
   };
 }
 
 /** Caja disponible = último saldo declarado de cada cuenta, consolidado. */
-export function cashAvailableCents(asOf: string): number {
-  const rows = getDb()
-    .prepare(
-      `SELECT s.balance_cents AS cents, s.currency
-       FROM cash_snapshots s
-       JOIN (
-         SELECT account, MAX(date || '/' || id) AS latest
-         FROM cash_snapshots WHERE date <= ? GROUP BY account
-       ) last ON last.account = s.account AND (s.date || '/' || s.id) = last.latest`,
-    )
-    .all(asOf) as MoneyRow[];
-  return consolidate(rows);
+export async function cashAvailableCents(asOf: string, fx?: Fx): Promise<number> {
+  const context = fx ?? (await loadFx());
+  const rows = await all<MoneyRow>(
+    `SELECT DISTINCT ON (account) balance_cents AS cents, currency
+     FROM cash_snapshots
+     WHERE date <= ?
+     ORDER BY account, date DESC, id DESC`,
+    [asOf],
+  );
+  return consolidate(rows, context);
 }
 
-/** Burn promedio de los últimos 3 meses cerrados + el corriente. */
-export function averageMonthlyBurnCents(asOf: string): number {
-  const since = addDays(asOf, -89);
-  const rows = getDb()
-    .prepare(`SELECT amount_cents AS cents, currency FROM expenses WHERE date BETWEEN ? AND ?`)
-    .all(since, asOf) as MoneyRow[];
+/** Burn promedio de los últimos 3 meses. */
+export async function averageMonthlyBurnCents(asOf: string, fx?: Fx): Promise<number> {
+  const context = fx ?? (await loadFx());
+  const rows = await all<MoneyRow>(
+    `SELECT amount_cents AS cents, currency FROM expenses WHERE date BETWEEN ? AND ?`,
+    [addDays(asOf, -89), asOf],
+  );
   if (rows.length === 0) return 0;
-  return Math.round(consolidate(rows) / 3);
+  return Math.round(consolidate(rows, context) / 3);
 }
 
-export function runwayMonths(asOf: string): number | null {
-  const burn = averageMonthlyBurnCents(asOf);
+export async function runwayMonths(asOf: string): Promise<number | null> {
+  const fx = await loadFx();
+  const burn = await averageMonthlyBurnCents(asOf, fx);
   if (burn <= 0) return null;
-  return cashAvailableCents(asOf) / burn;
+  return (await cashAvailableCents(asOf, fx)) / burn;
 }
 
 export interface ExpenseBreakdownRow {
@@ -172,19 +162,17 @@ export interface ExpenseBreakdownRow {
   pctOfTotal: number;
 }
 
-export function expensesByCategory(range: DateRange): ExpenseBreakdownRow[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT category, amount_cents AS cents, currency FROM expenses WHERE date BETWEEN ? AND ?`,
-    )
-    .all(range.from, range.to) as (MoneyRow & { category: string })[];
+export async function expensesByCategory(range: DateRange): Promise<ExpenseBreakdownRow[]> {
+  const fx = await loadFx();
+  const rows = await all<MoneyRow & { category: string }>(
+    `SELECT category, amount_cents AS cents, currency FROM expenses WHERE date BETWEEN ? AND ?`,
+    [range.from, range.to],
+  );
 
   const byCategory = new Map<string, { totalCents: number; count: number }>();
-  const rate = fxRate();
-  const base = baseCurrency();
   for (const r of rows) {
     const entry = byCategory.get(r.category) ?? { totalCents: 0, count: 0 };
-    entry.totalCents += toBase(r.cents, r.currency, rate, base);
+    entry.totalCents += toBase(r.cents, r.currency, fx);
     entry.count += 1;
     byCategory.set(r.category, entry);
   }
@@ -209,33 +197,29 @@ export interface ClientMarginRow {
 }
 
 /** Margen por cliente: fee mensual menos los costos directos imputados a esa cuenta. */
-export function marginByClient(range: DateRange): ClientMarginRow[] {
-  const db = getDb();
-  const rate = fxRate();
-  const base = baseCurrency();
+export async function marginByClient(range: DateRange): Promise<ClientMarginRow[]> {
+  const fx = await loadFx();
 
-  const clients = db
-    .prepare(
+  const [clients, costs] = await Promise.all([
+    all<{ id: number; name: string; fee_cents: number; fee_currency: Currency }>(
       `SELECT id, name, fee_cents, fee_currency FROM clients
        WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?) ORDER BY name`,
-    )
-    .all(range.to, range.to) as
-    { id: number; name: string; fee_cents: number; fee_currency: Currency }[];
-
-  const costs = db
-    .prepare(
+      [range.to, range.to],
+    ),
+    all<MoneyRow & { client_id: number }>(
       `SELECT client_id, amount_cents AS cents, currency FROM expenses
        WHERE client_id IS NOT NULL AND date BETWEEN ? AND ?`,
-    )
-    .all(range.from, range.to) as (MoneyRow & { client_id: number })[];
+      [range.from, range.to],
+    ),
+  ]);
 
   const costByClient = new Map<number, number>();
   for (const c of costs) {
-    costByClient.set(c.client_id, (costByClient.get(c.client_id) ?? 0) + toBase(c.cents, c.currency, rate, base));
+    costByClient.set(c.client_id, (costByClient.get(c.client_id) ?? 0) + toBase(c.cents, c.currency, fx));
   }
 
   return clients.map((c) => {
-    const feeCents = toBase(c.fee_cents, c.fee_currency, rate, base);
+    const feeCents = toBase(c.fee_cents, c.fee_currency, fx);
     const directCostCents = costByClient.get(c.id) ?? 0;
     const marginCents = feeCents - directCostCents;
     return {
@@ -250,32 +234,47 @@ export function marginByClient(range: DateRange): ClientMarginRow[] {
 }
 
 /** Serie mensual de ingresos vs gastos, para ver tendencia. */
-export function monthlyTrend(months: number, asOf: string): {
-  period: string;
-  billedCents: number;
-  expensesCents: number;
-  resultCents: number;
-}[] {
-  const db = getDb();
-  const rate = fxRate();
-  const base = baseCurrency();
-  const out: { period: string; billedCents: number; expensesCents: number; resultCents: number }[] = [];
-
+export async function monthlyTrend(
+  months: number,
+  asOf: string,
+): Promise<{ period: string; billedCents: number; expensesCents: number; resultCents: number }[]> {
+  const fx = await loadFx();
   const [year, month] = monthOf(asOf).split("-").map(Number);
-  for (let i = months - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(year, month - 1 - i, 1));
-    const period = d.toISOString().slice(0, 7);
 
-    const billed = db
-      .prepare(`SELECT amount_cents AS cents, currency FROM invoices WHERE substr(issued_at,1,7) = ?`)
-      .all(period) as MoneyRow[];
-    const spent = db
-      .prepare(`SELECT amount_cents AS cents, currency FROM expenses WHERE substr(date,1,7) = ?`)
-      .all(period) as MoneyRow[];
+  const periods = Array.from({ length: months }, (_, i) => {
+    const d = new Date(Date.UTC(year, month - 1 - (months - 1 - i), 1));
+    return d.toISOString().slice(0, 7);
+  });
 
-    const billedCents = billed.reduce((a, r) => a + toBase(r.cents, r.currency, rate, base), 0);
-    const expensesCents = spent.reduce((a, r) => a + toBase(r.cents, r.currency, rate, base), 0);
-    out.push({ period, billedCents, expensesCents, resultCents: billedCents - expensesCents });
-  }
-  return out;
+  // Una sola consulta por concepto en vez de dos por mes: con una base remota,
+  // doce viajes de red por gráfico se notan.
+  const [billedRows, spentRows] = await Promise.all([
+    all<{ period: string; cents: number; currency: Currency }>(
+      `SELECT substr(issued_at,1,7) AS period, amount_cents AS cents, currency
+       FROM invoices WHERE substr(issued_at,1,7) = ANY(?)`,
+      [periods],
+    ),
+    all<{ period: string; cents: number; currency: Currency }>(
+      `SELECT substr(date,1,7) AS period, amount_cents AS cents, currency
+       FROM expenses WHERE substr(date,1,7) = ANY(?)`,
+      [periods],
+    ),
+  ]);
+
+  const sumBy = (rows: { period: string; cents: number; currency: Currency }[]) => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      map.set(r.period, (map.get(r.period) ?? 0) + toBase(r.cents, r.currency, fx));
+    }
+    return map;
+  };
+
+  const billed = sumBy(billedRows);
+  const spent = sumBy(spentRows);
+
+  return periods.map((period) => {
+    const billedCents = billed.get(period) ?? 0;
+    const expensesCents = spent.get(period) ?? 0;
+    return { period, billedCents, expensesCents, resultCents: billedCents - expensesCents };
+  });
 }

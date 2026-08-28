@@ -21,10 +21,13 @@ Cada pantalla esta construida alrededor de esas tres preguntas.
 
 ```bash
 npm install
-cp .env.example .env.local          # y completar SESSION_SECRET
+cp .env.example .env.local          # completar DATABASE_URL y SESSION_SECRET
 npm run db:seed                     # equipo + objetivos del mes, sin datos de ejemplo
 npm run dev                         # http://localhost:3000
 ```
+
+Hace falta un PostgreSQL. Para desarrollo alcanza con uno local o con el plan
+gratuito de Neon o Supabase.
 
 Para **ponerlo en producción**, ver [`docs/deploy.md`](docs/deploy.md): trae el paso a
 paso con Docker en un VPS, HTTPS, respaldos automáticos y el checklist previo a cargar
@@ -48,8 +51,6 @@ Otros comandos:
 |---|---|
 | `npm run build` / `npm start` | build y arranque de producción |
 | `npm run typecheck` | chequeo de tipos |
-| `npm run db:reset` | borra la base local |
-| `npm run db:backup` | copia verificada de la base a `./backups` |
 
 Los scripts corren con `node` directamente: no hace falta ningún compilador extra.
 

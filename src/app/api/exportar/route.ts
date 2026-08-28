@@ -1,4 +1,4 @@
-import { getDb } from "@/lib/db";
+import { all } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { can } from "@/lib/permissions";
 import { EXPENSE_CATEGORY_LABEL, STAGE_LABEL, type ExpenseCategory, type Stage } from "@/lib/types";
@@ -42,22 +42,20 @@ export async function GET(request: Request) {
   const kind = url.searchParams.get("tipo") ?? "";
   const from = url.searchParams.get("from") ?? "1900-01-01";
   const to = url.searchParams.get("to") ?? "2999-12-31";
-  const db = getDb();
 
   let name = "netflow";
   let body = "";
 
   if (kind === "gastos") {
     if (!can(user, "finanzas:ver")) return new Response("Sin permiso", { status: 403 });
-    const rows = db
-      .prepare(
+    const rows = await all<Record<string, string | number | null>>(
         `SELECT e.date, e.concept, e.category, e.amount_cents, e.currency, e.cost_type,
                 e.recurrence, e.vendor, e.status, e.direct_cost, e.platform, e.campaign,
                 c.name AS client_name, e.notes
          FROM expenses e LEFT JOIN clients c ON c.id = e.client_id
          WHERE e.date BETWEEN ? AND ? ORDER BY e.date DESC`,
-      )
-      .all(from, to) as Record<string, string | number | null>[];
+        [from, to],
+    );
 
     name = `netflow-gastos-${from}_${to}`;
     body = csv(
@@ -73,14 +71,13 @@ export async function GET(request: Request) {
     );
   } else if (kind === "facturas") {
     if (!can(user, "finanzas:ver")) return new Response("Sin permiso", { status: 403 });
-    const rows = db
-      .prepare(
+    const rows = await all<Record<string, string | number | null>>(
         `SELECT i.issued_at, i.period, c.name AS client_name, i.concept, i.amount_cents,
                 i.currency, i.status, i.due_at, i.paid_at
          FROM invoices i JOIN clients c ON c.id = i.client_id
          WHERE i.issued_at BETWEEN ? AND ? ORDER BY i.issued_at DESC`,
-      )
-      .all(from, to) as Record<string, string | number | null>[];
+        [from, to],
+    );
 
     name = `netflow-facturas-${from}_${to}`;
     body = csv(
@@ -91,8 +88,7 @@ export async function GET(request: Request) {
       ]),
     );
   } else if (kind === "crm") {
-    const rows = db
-      .prepare(
+    const rows = await all<Record<string, string | number | null>>(
         `SELECT l.entered_at, l.name, l.company, l.specialty, l.source, l.stage, l.outcome,
                 o.name AS owner_name, s.name AS setter_name, cl.name AS closer_name,
                 l.next_action, l.next_action_date, l.meeting_at, l.meeting_outcome,
@@ -103,8 +99,8 @@ export async function GET(request: Request) {
          LEFT JOIN users s  ON s.id  = l.setter_id
          LEFT JOIN users cl ON cl.id = l.closer_id
          WHERE l.entered_at BETWEEN ? AND ? ORDER BY l.entered_at DESC`,
-      )
-      .all(from, to) as Record<string, string | number | null>[];
+        [from, to],
+    );
 
     name = `netflow-crm-${from}_${to}`;
     body = csv(
@@ -124,8 +120,7 @@ export async function GET(request: Request) {
     );
   } else if (kind === "clientes") {
     const verFees = can(user, "clientes:ver_fees");
-    const rows = db
-      .prepare(
+    const rows = await all<Record<string, string | number | null>>(
         `SELECT c.name, c.specialty, c.plan, c.fee_cents, c.fee_currency, c.start_date,
                 c.next_charge_date, c.payment_status, c.onboarding_status, c.account_health,
                 c.dev_required, c.landing, c.renewal_date, c.churned_at, c.churn_reason,
@@ -133,9 +128,9 @@ export async function GET(request: Request) {
          FROM clients c
          LEFT JOIN users pm ON pm.id = c.paid_media_owner_id
          LEFT JOIN users st ON st.id = c.setter_owner_id
-         ORDER BY c.churned_at IS NOT NULL, c.name`,
-      )
-      .all() as Record<string, string | number | null>[];
+         ORDER BY (c.churned_at IS NOT NULL), c.name`,
+        [],
+    );
 
     // El equipo no exporta lo que no puede ver en pantalla.
     const headers = ["Cliente", "Especialidad", "Plan", ...(verFees ? ["Fee", "Moneda"] : []),

@@ -4,7 +4,7 @@ import { can } from "@/lib/permissions";
 import { clientsList, userMap } from "@/lib/queries";
 import { formatDate, todayISO } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
-import { baseCurrency, toBase } from "@/lib/fx";
+import { loadFx, toBase } from "@/lib/fx";
 import { Badge, Card, EmptyState, PageHeader, Semaforo, StatCard } from "@/components/ui";
 import ExportButton from "@/components/ExportButton";
 import { PAYMENT_STATUS_LABEL } from "@/lib/types";
@@ -32,13 +32,14 @@ export default async function ClientesPage({
   const showChurned = sp.bajas === "1";
   const verFees = can(user, "clientes:ver_fees");
 
-  const clients = clientsList(showChurned);
-  const users = userMap();
+  const clients = await clientsList(showChurned);
+  const users = await userMap();
   const today = todayISO();
-  const base = baseCurrency();
+  const fx = await loadFx();
+  const base = fx.base;
 
   const active = clients.filter((c) => !c.churned_at);
-  const mrr = active.reduce((a, c) => a + toBase(c.fee_cents, c.fee_currency), 0);
+  const mrr = active.reduce((a, c) => a + toBase(c.fee_cents, c.fee_currency, fx), 0);
   const counts = {
     bien: active.filter((c) => c.account_health === "bien").length,
     atencion: active.filter((c) => c.account_health === "atencion").length,

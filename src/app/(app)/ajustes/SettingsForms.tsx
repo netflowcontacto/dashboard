@@ -48,10 +48,12 @@ export function OperationalForm({
   sla,
   followUpDays,
   paidSources,
+  visibilidad,
 }: {
   sla: string;
   followUpDays: string;
   paidSources: string;
+  visibilidad: string;
 }) {
   const [state, formAction] = useActionState<ActionState, FormData>(saveOperationalSettings, {});
 

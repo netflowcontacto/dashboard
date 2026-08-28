@@ -8,20 +8,25 @@ import { STAGE_LABEL } from "@/lib/types";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import LeadForm from "../LeadForm";
 import { CloseLostForm, CloseWonForm, FollowUpForm, ReopenForm } from "./CloseControls";
+import Attachments from "@/components/Attachments";
+import { listAttachments } from "@/actions/attachments";
+import { can } from "@/lib/permissions";
 import { LEAD_EVENT_LABEL, humanize, type Stage } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
-  const lead = leadById(Number(id));
+  const lead = await leadById(Number(id));
   if (!lead) notFound();
 
-  const users = usersList();
-  const map = userMap();
-  const events = leadEvents(lead.id);
+  const users = await usersList();
+  const map = await userMap();
+  const events = await leadEvents(lead.id);
   const today = todayISO();
+  const attachments = await listAttachments("lead", lead.id);
+  const puedeAdjuntar = can(user, "archivos:subir");
   const overdue = lead.outcome === "open" && lead.next_action_date !== null && lead.next_action_date < today;
 
   return (
@@ -77,6 +82,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 <ReopenForm leadId={lead.id} today={today} />
               </div>
             )}
+          </Card>
+
+          <Card title="Archivos" subtitle="Propuestas, contratos, capturas — todo lo de esta oportunidad.">
+            <Attachments kind="lead" ownerId={lead.id} items={attachments} canEdit={puedeAdjuntar} />
           </Card>
 
           <Card title="Registrar follow-up" subtitle={`${lead.follow_up_count} follow-up(s) registrados.`}>

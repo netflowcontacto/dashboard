@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
-import { getDb } from "@/lib/db";
+import { all } from "@/lib/db";
 import { can } from "@/lib/permissions";
 
 export const runtime = "nodejs";
@@ -23,17 +23,14 @@ export async function GET(request: Request) {
   if (q.length < 2) return NextResponse.json({ hits: [] });
 
   const like = `%${q}%`;
-  const db = getDb();
   const hits: SearchHit[] = [];
 
-  const leads = db
-    .prepare(
-      `SELECT id, name, company, stage, outcome FROM leads
-       WHERE name LIKE ? OR company LIKE ? OR specialty LIKE ? OR contact_email LIKE ?
-       ORDER BY outcome = 'open' DESC, id DESC LIMIT 6`,
-    )
-    .all(like, like, like, like) as
-    { id: number; name: string; company: string; stage: string; outcome: string }[];
+  const leads = await all<{ id: number; name: string; company: string; stage: string; outcome: string }>(
+    `SELECT id, name, company, stage, outcome FROM leads
+     WHERE name ILIKE ? OR company ILIKE ? OR specialty ILIKE ? OR contact_email ILIKE ?
+     ORDER BY (outcome = 'open') DESC, id DESC LIMIT 6`,
+    [like, like, like, like],
+  );
 
   for (const l of leads) {
     hits.push({
@@ -45,13 +42,12 @@ export async function GET(request: Request) {
     });
   }
 
-  const clients = db
-    .prepare(
-      `SELECT id, name, specialty, plan FROM clients
-       WHERE name LIKE ? OR specialty LIKE ? OR plan LIKE ?
-       ORDER BY churned_at IS NOT NULL, name LIMIT 5`,
-    )
-    .all(like, like, like) as { id: number; name: string; specialty: string; plan: string }[];
+  const clients = await all<{ id: number; name: string; specialty: string; plan: string }>(
+    `SELECT id, name, specialty, plan FROM clients
+     WHERE name ILIKE ? OR specialty ILIKE ? OR plan ILIKE ?
+     ORDER BY (churned_at IS NOT NULL), name LIMIT 5`,
+    [like, like, like],
+  );
 
   for (const c of clients) {
     hits.push({
@@ -63,16 +59,14 @@ export async function GET(request: Request) {
     });
   }
 
-  // El equipo solo ve sus propias tareas en la búsqueda rápida.
+  // Con visibilidad abierta la búsqueda alcanza a todo el equipo.
   const ownTasksOnly = !can(user, "equipo:ver_todos");
-  const tasks = db
-    .prepare(
-      `SELECT id, title, category, status FROM tasks
-       WHERE title LIKE ? AND status <> 'cancelada'${ownTasksOnly ? " AND assignee_id = ?" : ""}
-       ORDER BY status = 'hecho', id DESC LIMIT 4`,
-    )
-    .all(...(ownTasksOnly ? [like, user.id] : [like])) as
-    { id: number; title: string; category: string; status: string }[];
+  const tasks = await all<{ id: number; title: string; category: string; status: string }>(
+    `SELECT id, title, category, status FROM tasks
+     WHERE title ILIKE ? AND status <> 'cancelada'${ownTasksOnly ? " AND assignee_id = ?" : ""}
+     ORDER BY (status = 'hecho'), id DESC LIMIT 4`,
+    ownTasksOnly ? [like, user.id] : [like],
+  );
 
   for (const t of tasks) {
     hits.push({

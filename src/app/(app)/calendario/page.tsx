@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { all, one } from "@/lib/db";
 import { addDays, formatDate, formatDateTime, startOfWeek, todayISO } from "@/lib/dates";
 import { userMap } from "@/lib/queries";
 import { Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui";
@@ -25,7 +25,6 @@ export default async function CalendarioPage({
   const sp = await searchParams;
   const mine = sp.mias === "1";
 
-  const db = getDb();
   const today = todayISO();
   const from = startOfWeek(today);
   const to = addDays(from, 27); // 4 semanas
@@ -33,50 +32,46 @@ export default async function CalendarioPage({
   const meetingFilter = mine ? " AND (l.closer_id = ? OR l.setter_id = ? OR l.owner_id = ?)" : "";
   const meetingParams = mine ? [user.id, user.id, user.id] : [];
 
-  const meetings = db
-    .prepare(
+  const meetings = await all<{
+  id: number; name: string; company: string; meeting_at: string;
+  meeting_outcome: string; closer_id: number | null; setter_id: number | null;
+  }>(
       `SELECT l.id, l.name, l.company, l.meeting_at, l.meeting_outcome, l.closer_id, l.setter_id
        FROM leads l
        WHERE l.meeting_at IS NOT NULL AND substr(l.meeting_at,1,10) BETWEEN ? AND ?${meetingFilter}
        ORDER BY l.meeting_at`,
-    )
-    .all(from, to, ...meetingParams) as {
-      id: number; name: string; company: string; meeting_at: string;
-      meeting_outcome: string; closer_id: number | null; setter_id: number | null;
-    }[];
+      [from, to, ...meetingParams],
+  );
 
   const taskFilter = mine ? " AND assignee_id = ?" : "";
-  const deadlines = db
-    .prepare(
-      `SELECT id, title, due_date, status, category, assignee_id FROM tasks
-       WHERE due_date BETWEEN ? AND ? AND status NOT IN ('hecho','cancelada')${taskFilter}
-       ORDER BY due_date`,
-    )
-    .all(from, to, ...(mine ? [user.id] : [])) as {
-      id: number; title: string; due_date: string; status: string; category: string; assignee_id: number | null;
-    }[];
+  const deadlines = await all<{
+    id: number; title: string; due_date: string; status: string; category: string; assignee_id: number | null;
+  }>(
+    `SELECT id, title, due_date, status, category, assignee_id FROM tasks
+     WHERE due_date BETWEEN ? AND ? AND status NOT IN ('hecho','cancelada')${taskFilter}
+     ORDER BY due_date`,
+    [from, to, ...(mine ? [user.id] : [])],
+  );
 
-  const actions = db
-    .prepare(
-      `SELECT id, name, next_action, next_action_date, owner_id FROM leads
-       WHERE outcome = 'open' AND next_action_date BETWEEN ? AND ?${mine ? " AND owner_id = ?" : ""}
-       ORDER BY next_action_date`,
-    )
-    .all(from, to, ...(mine ? [user.id] : [])) as {
-      id: number; name: string; next_action: string; next_action_date: string; owner_id: number;
-    }[];
+  const actions = await all<{
+    id: number; name: string; next_action: string; next_action_date: string; owner_id: number;
+  }>(
+    `SELECT id, name, next_action, next_action_date, owner_id FROM leads
+     WHERE outcome = 'open' AND next_action_date BETWEEN ? AND ?${mine ? " AND owner_id = ?" : ""}
+     ORDER BY next_action_date`,
+    [from, to, ...(mine ? [user.id] : [])],
+  );
 
-  const content = db
-    .prepare(
-      `SELECT id, title, channel, planned_date, published_at FROM tasks
-       WHERE category = 'contenido' AND planned_date BETWEEN ? AND ?${taskFilter}
-       ORDER BY planned_date`,
-    )
-    .all(from, to, ...(mine ? [user.id] : [])) as {
-      id: number; title: string; channel: string; planned_date: string; published_at: string | null;
-    }[];
+  const content = await all<{
+    id: number; title: string; channel: string; planned_date: string; published_at: string | null;
+  }>(
+    `SELECT id, title, channel, planned_date, published_at FROM tasks
+     WHERE category = 'contenido' AND planned_date BETWEEN ? AND ?${taskFilter}
+     ORDER BY planned_date`,
+    [from, to, ...(mine ? [user.id] : [])],
+  );
 
-  const users = userMap();
+  const users = await userMap();
   const days = Array.from({ length: 28 }, (_, i) => addDays(from, i));
 
   const byDay = new Map<string, { kind: string; label: string; detail: string; href: string; tone: "brand" | "warn" | "risk" | "neutral" }[]>();

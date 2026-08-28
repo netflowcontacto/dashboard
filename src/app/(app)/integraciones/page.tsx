@@ -1,5 +1,5 @@
-import { requireAdmin } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { requireAdminOr404 } from "@/lib/auth";
+import { all } from "@/lib/db";
 import { integrationStatuses } from "@/lib/integrations";
 import { formatDateTime } from "@/lib/dates";
 import { Badge, Card, EmptyState, PageHeader, type Tone } from "@/components/ui";
@@ -10,18 +10,16 @@ export const dynamic = "force-dynamic";
 const PHASE_TONE: Record<string, Tone> = { V1: "ok", V2: "brand", V3: "neutral" };
 
 export default async function IntegracionesPage() {
-  await requireAdmin();
-  const integrations = integrationStatuses();
+  await requireAdminOr404();
+  const integrations = await integrationStatuses();
 
-  const recent = getDb()
-    .prepare(
-      `SELECT id, source, event_type, received_at, processed_at, result
-       FROM integration_events ORDER BY id DESC LIMIT 25`,
-    )
-    .all() as {
-      id: number; source: string; event_type: string; received_at: string;
-      processed_at: string | null; result: string;
-    }[];
+  const recent = await all<{
+    id: number; source: string; event_type: string; received_at: string;
+    processed_at: string | null; result: string;
+  }>(
+    `SELECT id, source, event_type, received_at, processed_at, result
+     FROM integration_events ORDER BY id DESC LIMIT 25`,
+  );
 
   return (
     <>

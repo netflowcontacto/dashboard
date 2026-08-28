@@ -39,7 +39,7 @@ export default async function AlertasPage({
   const sp = await searchParams;
   const mine = sp.mias === "1";
 
-  const all = alertsFor(user, todayISO());
+  const all = await alertsFor(user, todayISO());
   const alerts = mine ? all.filter((a) => a.ownerId === user.id) : all;
 
   const counts = {
@@ -102,11 +102,6 @@ export default async function AlertasPage({
         </div>
       )}
 
-      {!can(user, "finanzas:ver") && (
-        <p className="mt-6 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-          Las alertas de cobros y facturación son de dirección y no aparecen en esta vista.
-        </p>
-      )}
     </>
   );
 }

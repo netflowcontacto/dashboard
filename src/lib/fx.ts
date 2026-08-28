@@ -4,35 +4,55 @@ import { convert, type Money } from "./money";
 import type { Currency } from "./types";
 
 /**
- * Tipo de cambio y moneda de consolidación, leidos de la configuración.
+ * Tipo de cambio y moneda de consolidación.
  *
  * NetFlow opera en ARS y USD. Los importes se guardan en su moneda original;
- * esto solo decide como se suman para mostrar un total. Cambiar el tipo de
+ * esto solo decide cómo se suman para mostrar un total. Cambiar el tipo de
  * cambio no modifica ningún dato cargado.
  *
- * Modulo solo-servidor: lee de la base. Para formatear en el cliente,
- * usar `@/lib/money`.
+ * El contexto se carga UNA vez por pantalla con `loadFx()` y después se pasa
+ * a funciones puras. Antes `toBase()` leía la configuración en cada llamada;
+ * con una base remota eso serían cientos de viajes de red por página.
  */
 
-export function fxRate(): number {
-  const raw = Number(getSetting("fx_ars_per_usd", "1000"));
-  return Number.isFinite(raw) && raw > 0 ? raw : 1000;
+export interface Fx {
+  rate: number;
+  base: Currency;
 }
 
-export function baseCurrency(): Currency {
-  return getSetting("base_currency", "USD") === "ARS" ? "ARS" : "USD";
+// Memo corto: una pantalla hace varias llamadas seguidas y no tiene sentido
+// volver a preguntar la configuración en cada una.
+let cache: { value: Fx; at: number } | null = null;
+const TTL_MS = 2_000;
+
+export async function loadFx(): Promise<Fx> {
+  if (cache && Date.now() - cache.at < TTL_MS) return cache.value;
+
+  const [rawRate, rawBase] = await Promise.all([
+    getSetting("fx_ars_per_usd", "1000"),
+    getSetting("base_currency", "USD"),
+  ]);
+
+  const rate = Number(rawRate);
+  const value: Fx = {
+    rate: Number.isFinite(rate) && rate > 0 ? rate : 1000,
+    base: rawBase === "ARS" ? "ARS" : "USD",
+  };
+
+  cache = { value, at: Date.now() };
+  return value;
 }
 
-/** Convierte a la moneda base configurada, en centavos. */
-export function toBase(
-  cents: number,
-  currency: Currency,
-  rate = fxRate(),
-  base = baseCurrency(),
-): number {
-  return convert(cents, currency, base, rate);
+/** Invalida el memo. Lo llama el guardado de ajustes. */
+export function clearFxCache(): void {
+  cache = null;
 }
 
-export function sumToBase(rows: Money[], rate = fxRate(), base = baseCurrency()): number {
-  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, rate, base), 0);
+/** Convierte a la moneda base. Función pura: el contexto llega por parámetro. */
+export function toBase(cents: number, currency: Currency, fx: Fx): number {
+  return convert(cents, currency, fx.base, fx.rate);
+}
+
+export function sumToBase(rows: Money[], fx: Fx): number {
+  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, fx), 0);
 }

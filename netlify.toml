@@ -1,0 +1,31 @@
+# Despliegue de NetFlow en Netlify.
+#
+# El plugin oficial de Next.js hace correr los componentes de servidor y las
+# server actions como funciones. La base es PostgreSQL gestionado (Netlify DB,
+# Neon o Supabase): en Netlify el disco es efímero, así que la base NO puede
+# vivir en el mismo lugar que la aplicación.
+#
+# Variables que hay que cargar en Site settings → Environment variables:
+#   DATABASE_URL    cadena de conexión agrupada (pooled) del Postgres
+#   SESSION_SECRET  openssl rand -hex 32
+#   TZ              America/Argentina/Buenos_Aires
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# El dashboard es una herramienta interna: no tiene que aparecer en buscadores.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "same-origin"
+    X-Frame-Options = "DENY"

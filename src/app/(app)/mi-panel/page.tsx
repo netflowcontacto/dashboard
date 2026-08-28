@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { getDb } from "@/lib/db";
+import { all, one } from "@/lib/db";
 import { resolveRange, monthOf, formatPeriod, formatDate, formatDateTime, todayISO, addDays } from "@/lib/dates";
 import { performanceFor } from "@/lib/metrics/team";
 import { areaProgress, companyProgress, periodElapsedPct, headlineObjective } from "@/lib/metrics/objectives";
 import { areaMetrics } from "@/lib/metrics/team";
 import { alertsFor, SEVERITY_LABEL } from "@/lib/alerts";
-import { baseCurrency } from "@/lib/fx";
+import { loadFx } from "@/lib/fx";
 import { AREA_LABEL } from "@/lib/types";
 import { Badge, Card, EmptyState, PageHeader, ProgressBar, StatCard, formatMetric, formatPct } from "@/components/ui";
 import RangePicker from "@/components/RangePicker";
@@ -41,75 +41,73 @@ export default async function MiPanelPage({
     to: sp.to as string,
   });
 
-  const db = getDb();
   const today = todayISO();
   const period = monthOf(range.to);
-  const cur = baseCurrency();
+  const cur = (await loadFx()).base;
 
-  const me = performanceFor(user, range);
-  const company = companyProgress(period, today);
-  const headline = headlineObjective(period, today);
+  const verFacturacion = can(user, "finanzas:ver");
+  const me = await performanceFor(user, range, verFacturacion);
+  const company = await companyProgress(period, today, verFacturacion);
+  const headline = await headlineObjective(period, today);
   const elapsed = periodElapsedPct(period, today);
 
-  const areaTeam = db
-    .prepare("SELECT id FROM users WHERE area = ? AND active = 1")
-    .all(user.area) as { id: number }[];
-  const area = areaProgress(user.area, period, today);
-  const areaResults = areaMetrics(user.area, range, areaTeam.map((u) => u.id));
+  const areaTeam = await all<{ id: number }>(
+    "SELECT id FROM users WHERE area = ? AND active = 1",
+    [user.area],
+  );
+  const area = await areaProgress(user.area, period, today, verFacturacion);
+  const areaResults = await areaMetrics(user.area, range, areaTeam.map((u) => u.id), verFacturacion);
 
-  const newClients = db
-    .prepare(
-      "SELECT COUNT(*) AS n FROM clients WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL",
-    )
-    .get(range.from, range.to) as { n: number };
+  const newClients = await one<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM clients WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL",
+    [range.from, range.to],
+  );
 
-  const myTasks = db
-    .prepare(
+  const myTasks = await all<{
+  id: number; title: string; category: string; status: string; priority: string;
+  due_date: string | null; blocker: string; client_id: number | null;
+  }>(
       `SELECT id, title, category, status, priority, due_date, blocker, client_id
        FROM tasks
        WHERE assignee_id = ? AND status <> 'cancelada'
        ORDER BY status = 'hecho', COALESCE(due_date, '9999-12-31'), priority = 'baja', id DESC
        LIMIT 25`,
-    )
-    .all(user.id) as {
-      id: number; title: string; category: string; status: string; priority: string;
-      due_date: string | null; blocker: string; client_id: number | null;
-    }[];
+      [user.id],
+  );
 
-  const myMeetings = db
-    .prepare(
-      `SELECT l.id, l.name, l.company, l.meeting_at, l.meeting_outcome
-       FROM leads l
-       WHERE l.meeting_at IS NOT NULL
-         AND substr(l.meeting_at,1,10) BETWEEN ? AND ?
-         AND (l.closer_id = ? OR l.setter_id = ? OR l.owner_id = ?)
-       ORDER BY l.meeting_at`,
-    )
-    .all(addDays(today, -1), addDays(today, 14), user.id, user.id, user.id) as {
-      id: number; name: string; company: string; meeting_at: string; meeting_outcome: string;
-    }[];
+  const myMeetings = await all<{
+    id: number; name: string; company: string; meeting_at: string; meeting_outcome: string;
+  }>(
+    `SELECT l.id, l.name, l.company, l.meeting_at, l.meeting_outcome
+     FROM leads l
+     WHERE l.meeting_at IS NOT NULL
+       AND substr(l.meeting_at,1,10) BETWEEN ? AND ?
+       AND (l.closer_id = ? OR l.setter_id = ? OR l.owner_id = ?)
+     ORDER BY l.meeting_at`,
+    [addDays(today, -1), addDays(today, 14), user.id, user.id, user.id],
+  );
 
-  const myLeads = db
-    .prepare(
+  const myLeads = await all<{
+  id: number; name: string; company: string; next_action: string | null;
+  next_action_date: string | null; stage: string;
+  }>(
       `SELECT id, name, company, next_action, next_action_date, stage
        FROM leads
        WHERE outcome = 'open' AND owner_id = ?
        ORDER BY COALESCE(next_action_date, '9999-12-31') LIMIT 12`,
-    )
-    .all(user.id) as {
-      id: number; name: string; company: string; next_action: string | null;
-      next_action_date: string | null; stage: string;
-    }[];
+      [user.id],
+  );
 
-  const announcements = db
-    .prepare(
+  const announcements = await all<{
+  id: number; title: string; body: string; level: string; starts_at: string
+  }>(
       `SELECT id, title, body, level, starts_at FROM announcements
        WHERE starts_at <= ? AND (ends_at IS NULL OR ends_at >= ?)
        ORDER BY starts_at DESC LIMIT 5`,
-    )
-    .all(today, today) as { id: number; title: string; body: string; level: string; starts_at: string }[];
+      [today, today],
+  );
 
-  const myAlerts = alertsFor(user, today).slice(0, 8);
+  const myAlerts = (await alertsFor(user, today)).slice(0, 8);
   const blockers = myTasks.filter((t) => t.status === "bloqueado");
   const overdueTasks = myTasks.filter(
     (t) => t.status !== "hecho" && t.due_date !== null && t.due_date < today,
@@ -157,7 +155,7 @@ export default async function MiPanelPage({
       </Card>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Clientes nuevos del período" value={newClients.n} tone={newClients.n > 0 ? "ok" : "neutral"} />
+        <StatCard label="Clientes nuevos del período" value={Number(newClients?.n ?? 0)} tone={Number(newClients?.n ?? 0) > 0 ? "ok" : "neutral"} />
         <StatCard
           label="Mi cumplimiento"
           value={me.progress.pct === null ? "sin objetivos" : formatPct(me.progress.pct)}

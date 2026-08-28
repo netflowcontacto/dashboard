@@ -1,23 +1,42 @@
-# Puesta en producción de NetFlow.
+# NetFlow fuera de Netlify: la aplicación y su PostgreSQL, en un VPS.
 #
 #   1. cp .env.example .env  y completar SESSION_SECRET
 #   2. docker compose up -d --build
-#   3. docker compose exec app node scripts/seed.mjs   (solo la primera vez)
+#   3. docker compose exec app node scripts/seed.mjs
 #
-# Los datos viven en el volumen `netflow-data`, no en el contenedor: se puede
-# reconstruir la imagen todas las veces que haga falta sin perder nada.
+# En Netlify no hace falta nada de esto: ver docs/deploy.md.
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-netflow}
+      POSTGRES_DB: netflow
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - netflow-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netflow -d netflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build: .
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"   # solo local: el TLS lo termina el proxy de adelante
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      - netflow-data:/data
+      - netflow-uploads:/data/uploads
     environment:
-      DATABASE_PATH: /data/netflow.db
+      DATABASE_URL: postgres://netflow:${POSTGRES_PASSWORD:-netflow}@postgres:5432/netflow?sslmode=disable
       SESSION_SECRET: ${SESSION_SECRET:?falta SESSION_SECRET en .env}
+      UPLOADS_DIR: /data/uploads
       INTEGRATIONS_INBOUND_TOKEN: ${INTEGRATIONS_INBOUND_TOKEN:-}
       CALENDLY_WEBHOOK_SIGNING_KEY: ${CALENDLY_WEBHOOK_SIGNING_KEY:-}
       TZ: America/Argentina/Buenos_Aires
@@ -26,24 +45,30 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
-  # Respaldo diario de la base. La copia se hace con la API de backup de
-  # SQLite, que es segura con la app escribiendo al mismo tiempo.
+  # Respaldo diario con pg_dump, comprimido y rotado.
   backup:
-    build: .
+    image: postgres:16-alpine
     restart: unless-stopped
-    entrypoint: ["node", "scripts/backup-loop.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      - netflow-data:/data
       - ./backups:/backups
     environment:
-      DATABASE_PATH: /data/netflow.db
-      BACKUP_DIR: /backups
-      BACKUP_KEEP: "14"
+      PGPASSWORD: ${POSTGRES_PASSWORD:-netflow}
       TZ: America/Argentina/Buenos_Aires
-    depends_on:
-      - app
+    entrypoint: >
+      sh -c 'while true; do
+        f=/backups/netflow-$$(date +%Y-%m-%d_%H-%M).sql.gz;
+        pg_dump -h postgres -U netflow -d netflow | gzip > "$$f" &&
+        echo "respaldo ok: $$f" ||
+        echo "FALLO el respaldo";
+        ls -1t /backups/netflow-*.sql.gz 2>/dev/null | tail -n +15 | xargs -r rm --;
+        sleep 86400;
+      done'
 
 volumes:
-  netflow-data:
+  netflow-db:
+  netflow-uploads:

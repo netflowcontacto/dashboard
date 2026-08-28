@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb } from "@/lib/db";
+import { run } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { monthOf, todayISO } from "@/lib/dates";
@@ -10,7 +10,7 @@ import { errorMessage, type ActionState } from "@/lib/errors";
 import * as F from "@/lib/form";
 import type { Area } from "@/lib/types";
 
-const AREAS = ["direccion", "closer", "paid_media", "setter", "desarrollo"] as const;
+const AREAS = ["direccion", "closer", "paid_media", "setter", "desarrollo", "marketing"] as const;
 const SCOPES = ["empresa", "area", "persona"] as const;
 
 export async function saveObjective(_prev: ActionState, fd: FormData): Promise<ActionState> {
@@ -36,18 +36,16 @@ export async function saveObjective(_prev: ActionState, fd: FormData): Promise<A
     if (scope === "area" && !area) return { error: "Elegi el area del objetivo." };
     if (scope === "persona" && !userId) return { error: "Elegi la persona del objetivo." };
 
-    getDb()
-      .prepare(
-        `INSERT INTO objectives (period, scope, area, user_id, metric_key, label, target_value, weight, direction, notes)
-         VALUES (?,?,?,?,?,?,?,?,?,?)
-         ON CONFLICT(period, scope, area, user_id, metric_key)
-         DO UPDATE SET target_value = excluded.target_value,
-                       weight       = excluded.weight,
-                       label        = excluded.label,
-                       direction    = excluded.direction,
-                       notes        = excluded.notes`,
-      )
-      .run(
+    await run(
+      `INSERT INTO objectives (period, scope, area, user_id, metric_key, label, target_value, weight, direction, notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT (period, scope, area, user_id, metric_key)
+       DO UPDATE SET target_value = EXCLUDED.target_value,
+                     weight       = EXCLUDED.weight,
+                     label        = EXCLUDED.label,
+                     direction    = EXCLUDED.direction,
+                     notes        = EXCLUDED.notes`,
+      [
         period,
         scope,
         area,
@@ -58,7 +56,8 @@ export async function saveObjective(_prev: ActionState, fd: FormData): Promise<A
         Math.max(0.1, F.num(fd, "weight", 1)),
         def.higherIsBetter ? "higher_is_better" : "lower_is_better",
         F.str(fd, "notes"),
-      );
+      ],
+    );
 
     revalidatePath("/objetivos");
     revalidatePath("/resumen");
@@ -75,7 +74,7 @@ export async function deleteObjective(fd: FormData): Promise<void> {
   if (!can(user, "objetivos:cargar")) return;
   const id = F.int(fd, "id");
   if (!id) return;
-  getDb().prepare("DELETE FROM objectives WHERE id = ?").run(id);
+  await run("DELETE FROM objectives WHERE id = ?", [id]);
   revalidatePath("/objetivos");
   revalidatePath("/equipo");
 }
@@ -92,14 +91,13 @@ export async function copyObjectives(fd: FormData): Promise<void> {
   const to = F.str(fd, "to_period");
   if (!/^\d{4}-\d{2}$/.test(from) || !/^\d{4}-\d{2}$/.test(to) || from === to) return;
 
-  getDb()
-    .prepare(
-      `INSERT INTO objectives (period, scope, area, user_id, metric_key, label, target_value, weight, direction, notes)
-       SELECT ?, scope, area, user_id, metric_key, label, target_value, weight, direction, notes
-       FROM objectives WHERE period = ?
-       ON CONFLICT(period, scope, area, user_id, metric_key) DO NOTHING`,
-    )
-    .run(to, from);
+  await run(
+    `INSERT INTO objectives (period, scope, area, user_id, metric_key, label, target_value, weight, direction, notes)
+     SELECT ?, scope, area, user_id, metric_key, label, target_value, weight, direction, notes
+     FROM objectives WHERE period = ?
+     ON CONFLICT (period, scope, area, user_id, metric_key) DO NOTHING`,
+    [to, from],
+  );
 
   revalidatePath("/objetivos");
 }

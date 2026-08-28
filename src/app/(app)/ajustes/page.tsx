@@ -1,6 +1,6 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireAdminOr404 } from "@/lib/auth";
 import { getSetting } from "@/lib/db";
-import { fxRate, baseCurrency } from "@/lib/fx";
+import { loadFx } from "@/lib/fx";
 import { usersList } from "@/lib/queries";
 import { METRICS } from "@/lib/metrics/registry";
 import { Card, PageHeader } from "@/components/ui";
@@ -9,7 +9,17 @@ import { FxForm, OperationalForm, UserForm } from "./SettingsForms";
 export const dynamic = "force-dynamic";
 
 export default async function AjustesPage() {
-  const user = await requireAdmin();
+  const user = await requireAdminOr404();
+
+  const [fx, sla, followUp, paidSources, visibilidad, users] = await Promise.all([
+    loadFx(),
+    getSetting("sla_primer_contacto_horas", "24"),
+    getSetting("dias_follow_up_propuesta", "5"),
+    getSetting("paid_lead_sources", "meta_ads,google_ads,instagram_ads,pauta"),
+    getSetting("visibilidad_equipo", "abierta"),
+    usersList(),
+  ]);
+  const ajustes = { sla, followUp, paidSources, visibilidad };
 
   return (
     <>
@@ -20,19 +30,20 @@ export default async function AjustesPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Moneda y tipo de cambio">
-          <FxForm rate={fxRate()} base={baseCurrency()} />
+          <FxForm rate={fx.rate} base={fx.base} />
         </Card>
         <Card title="Reglas operativas" subtitle="Definen cuando el sistema levanta una alerta.">
           <OperationalForm
-            sla={getSetting("sla_primer_contacto_horas", "24")}
-            followUpDays={getSetting("dias_follow_up_propuesta", "5")}
-            paidSources={getSetting("paid_lead_sources", "meta_ads,google_ads,instagram_ads,pauta")}
+            sla={ajustes.sla}
+            followUpDays={ajustes.followUp}
+            paidSources={ajustes.paidSources}
+            visibilidad={ajustes.visibilidad}
           />
         </Card>
       </div>
 
       <Card className="mt-4" title="Equipo y accesos">
-        <UserForm users={usersList()} currentUserId={user.id} />
+        <UserForm users={users} currentUserId={user.id} />
       </Card>
 
       <Card

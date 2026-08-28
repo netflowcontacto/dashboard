@@ -42,13 +42,13 @@ export async function POST(request: Request) {
   const source = String(payload.source ?? "form").trim() || "form";
   const externalId = payload.external_id ? String(payload.external_id) : null;
 
-  const eventId = recordEvent(source, externalId, "lead.created", payload);
+  const eventId = await recordEvent(source, externalId, "lead.created", payload);
   if (eventId === null) {
     return NextResponse.json({ ok: true, duplicated: true }, { status: 200 });
   }
 
   try {
-    const result = applyInboundLead({
+    const result = await applyInboundLead({
       name,
       email: payload.email ? String(payload.email) : undefined,
       phone: payload.phone ? String(payload.phone) : undefined,
@@ -59,14 +59,14 @@ export async function POST(request: Request) {
       meetingAt: payload.meeting_at ? String(payload.meeting_at) : null,
     });
 
-    markProcessed(eventId, result.created ? "lead_creado" : "lead_actualizado", result.leadId);
-    touchIntegration(source === "manychat" ? "manychat" : "formularios", "activa");
+    await markProcessed(eventId, result.created ? "lead_creado" : "lead_actualizado", result.leadId);
+    await touchIntegration(source === "manychat" ? "manychat" : "formularios", "activa");
 
     return NextResponse.json({ ok: true, lead_id: result.leadId, created: result.created });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Error desconocido";
-    markProcessed(eventId, `error: ${message}`, null);
-    touchIntegration(source === "manychat" ? "manychat" : "formularios", "error", message);
+    await markProcessed(eventId, `error: ${message}`, null);
+    await touchIntegration(source === "manychat" ? "manychat" : "formularios", "error", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

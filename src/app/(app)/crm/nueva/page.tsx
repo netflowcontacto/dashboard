@@ -22,7 +22,7 @@ export default async function NuevaOportunidadPage() {
         </Link>
       </PageHeader>
       <Card>
-        <LeadForm users={usersList()} today={todayISO()} />
+        <LeadForm users={await usersList()} today={todayISO()} />
       </Card>
     </>
   );

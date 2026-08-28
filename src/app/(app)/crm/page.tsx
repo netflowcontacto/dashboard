@@ -33,8 +33,8 @@ export default async function CrmPage({
     q: (sp.q as string) || undefined,
   };
 
-  const leads = leadsList(filters);
-  const users = userMap();
+  const leads = await leadsList(filters);
+  const users = await userMap();
   const today = todayISO();
 
   const byStage = new Map<Stage, typeof leads>();
@@ -66,8 +66,8 @@ export default async function CrmPage({
       </PageHeader>
 
       <PipelineFilters
-        users={usersList()}
-        sources={leadSources()}
+        users={await usersList()}
+        sources={await leadSources()}
         current={{
           stage: filters.stage,
           owner: filters.ownerId ? String(filters.ownerId) : "",

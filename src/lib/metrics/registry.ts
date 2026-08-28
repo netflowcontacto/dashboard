@@ -1,6 +1,6 @@
 import "server-only";
-import { getDb, getSetting } from "../db";
-import { fxRate, baseCurrency, toBase } from "../fx";
+import { all, one, getSetting } from "../db";
+import { loadFx, toBase, type Fx } from "../fx";
 import type { DateRange } from "../dates";
 import type { Area, Currency } from "../types";
 
@@ -20,40 +20,47 @@ import type { Area, Currency } from "../types";
  *   moneda base (no centavos) | horas -> horas.
  */
 
-export type MetricUnit = "número" | "porcentaje" | "moneda" | "horas";
+export type MetricUnit = "numero" | "porcentaje" | "moneda" | "horas";
 
 export interface MetricContext {
   range: DateRange;
   /** null = toda la empresa. Si viene, filtra por esas personas. */
   userIds: number[] | null;
+  /** Tipo de cambio ya resuelto: evita que cada métrica lo vuelva a pedir. */
+  fx: Fx;
 }
 
 export interface MetricDef {
   key: string;
   label: string;
   unit: MetricUnit;
-  /** Area a la que pertenece la métrica. 'empresa' = transversal. */
+  /** Área a la que pertenece la métrica. 'empresa' = transversal. */
   scope: Area | "empresa";
-  /** Cuando es false, un valor mas bajo es mejor (ej: tiempo de respuesta, CPL). */
+  /** Cuando es false, un valor más bajo es mejor (ej: tiempo de respuesta, CPL). */
   higherIsBetter: boolean;
+  /**
+   * Métrica de facturación: solo la ve Dirección.
+   *
+   * La línea es "lo que entra": MRR, facturación cobrada, revenue. La
+   * inversión publicitaria y el CPL NO son sensibles — son costos, y Paid
+   * Media los necesita para trabajar.
+   */
+  sensitive?: boolean;
   help?: string;
-  compute: (ctx: MetricContext) => number | null;
+  compute: (ctx: MetricContext) => Promise<number | null>;
 }
 
 // --- helpers ---------------------------------------------------------------
 
-function db() {
-  return getDb();
-}
-
-/** Genera "AND col IN (?,?,?)" o cadena vacia si no hay filtro de personas. */
-function userFilter(column: string, userIds: number[] | null): { sql: string; params: number[] } {
+/** Genera "AND col IN (...)" o cadena vacía si no hay filtro de personas. */
+function userFilter(column: string, userIds: number[] | null): { sql: string; params: number[][] } {
   if (!userIds || userIds.length === 0) return { sql: "", params: [] };
-  return { sql: ` AND ${column} IN (${userIds.map(() => "?").join(",")})`, params: userIds };
+  // = ANY(?) con un array evita armar la lista de placeholders a mano.
+  return { sql: ` AND ${column} = ANY(?)`, params: [userIds] };
 }
 
-function count(sql: string, params: unknown[]): number {
-  const row = db().prepare(sql).get(...params) as { n: number | null } | undefined;
+async function count(sql: string, params: unknown[]): Promise<number> {
+  const row = await one<{ n: number | null }>(sql, params);
   return Number(row?.n ?? 0);
 }
 
@@ -61,24 +68,20 @@ function ratio(numerator: number, denominator: number): number | null {
   return denominator > 0 ? (numerator / denominator) * 100 : null;
 }
 
-function moneyMajor(rows: { cents: number; currency: Currency }[]): number {
-  const rate = fxRate();
-  const base = baseCurrency();
-  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, rate, base), 0) / 100;
+function moneyMajor(rows: { cents: number; currency: Currency }[], fx: Fx): number {
+  return rows.reduce((acc, r) => acc + toBase(r.cents, r.currency, fx), 0) / 100;
 }
 
-/** Origenes de lead que se consideran pauta paga (configurable en Ajustes). */
-export function paidSources(): string[] {
-  return getSetting("paid_lead_sources", "meta_ads,google_ads,instagram_ads,pauta")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+/** Orígenes de lead que se consideran pauta paga (configurable en Ajustes). */
+export async function paidSources(): Promise<string[]> {
+  const raw = await getSetting("paid_lead_sources", "meta_ads,google_ads,instagram_ads,pauta");
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-function paidSourceFilter(): { sql: string; params: string[] } {
-  const sources = paidSources();
-  if (sources.length === 0) return { sql: " AND 0", params: [] };
-  return { sql: ` AND source IN (${sources.map(() => "?").join(",")})`, params: sources };
+async function paidSourceFilter(): Promise<{ sql: string; params: string[][] }> {
+  const sources = await paidSources();
+  if (sources.length === 0) return { sql: " AND false", params: [] };
+  return { sql: " AND source = ANY(?)", params: [sources] };
 }
 
 // --- métricas comerciales --------------------------------------------------
@@ -87,10 +90,10 @@ const commercial: MetricDef[] = [
   {
     key: "reuniones_realizadas",
     label: "Reuniones realizadas",
-    unit: "número",
+    unit: "numero",
     scope: "closer",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("closer_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads
@@ -102,10 +105,10 @@ const commercial: MetricDef[] = [
   {
     key: "propuestas",
     label: "Propuestas enviadas",
-    unit: "número",
+    unit: "numero",
     scope: "closer",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("closer_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads
@@ -117,10 +120,10 @@ const commercial: MetricDef[] = [
   {
     key: "cierres",
     label: "Cierres",
-    unit: "número",
+    unit: "numero",
     scope: "closer",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("closer_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads
@@ -136,10 +139,12 @@ const commercial: MetricDef[] = [
     scope: "closer",
     higherIsBetter: true,
     help: "Cierres sobre reuniones realizadas en el período.",
-    compute: (ctx) => {
-      const cierres = byKey("cierres").compute(ctx) ?? 0;
-      const reuniones = byKey("reuniones_realizadas").compute(ctx) ?? 0;
-      return ratio(cierres, reuniones);
+    compute: async (ctx) => {
+      const [cierres, reuniones] = await Promise.all([
+        byKey("cierres").compute(ctx),
+        byKey("reuniones_realizadas").compute(ctx),
+      ]);
+      return ratio(cierres ?? 0, reuniones ?? 0);
     },
   },
   {
@@ -148,18 +153,18 @@ const commercial: MetricDef[] = [
     unit: "moneda",
     scope: "closer",
     higherIsBetter: true,
+    sensitive: true,
     help: "Fee mensual de los clientes dados de alta en el período.",
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds, fx }) => {
       const f = userFilter("l.closer_id", userIds);
-      const rows = db()
-        .prepare(
-          `SELECT c.fee_cents AS cents, c.fee_currency AS currency
-           FROM clients c
-           ${userIds ? "JOIN leads l ON l.client_id = c.id" : ""}
-           WHERE c.start_date BETWEEN ? AND ? AND c.churned_at IS NULL${userIds ? f.sql : ""}`,
-        )
-        .all(range.from, range.to, ...(userIds ? f.params : [])) as { cents: number; currency: Currency }[];
-      return moneyMajor(rows);
+      const rows = await all<{ cents: number; currency: Currency }>(
+        `SELECT c.fee_cents AS cents, c.fee_currency AS currency
+         FROM clients c
+         ${userIds ? "JOIN leads l ON l.client_id = c.id" : ""}
+         WHERE c.start_date BETWEEN ? AND ? AND c.churned_at IS NULL${userIds ? f.sql : ""}`,
+        [range.from, range.to, ...(userIds ? f.params : [])],
+      );
+      return moneyMajor(rows, fx);
     },
   },
 ];
@@ -170,10 +175,10 @@ const setter: MetricDef[] = [
   {
     key: "leads_recibidos",
     label: "Leads recibidos",
-    unit: "número",
+    unit: "numero",
     scope: "setter",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("setter_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads WHERE entered_at BETWEEN ? AND ?${f.sql}`,
@@ -184,10 +189,10 @@ const setter: MetricDef[] = [
   {
     key: "leads_contactados",
     label: "Leads contactados",
-    unit: "número",
+    unit: "numero",
     scope: "setter",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("setter_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads
@@ -203,27 +208,26 @@ const setter: MetricDef[] = [
     scope: "setter",
     higherIsBetter: false,
     help: "Promedio entre el ingreso del lead y el primer contacto.",
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("setter_id", userIds);
-      const row = db()
-        .prepare(
-          `SELECT AVG((julianday(first_contacted_at) - julianday(created_at)) * 24.0) AS n
-           FROM leads
-           WHERE first_contacted_at IS NOT NULL
-             AND substr(first_contacted_at,1,10) BETWEEN ? AND ?
-             AND julianday(first_contacted_at) >= julianday(created_at)${f.sql}`,
-        )
-        .get(range.from, range.to, ...f.params) as { n: number | null };
-      return row.n === null ? null : Number(row.n);
+      const row = await one<{ n: number | null }>(
+        `SELECT AVG(EXTRACT(EPOCH FROM (first_contacted_at::timestamp - created_at::timestamp)) / 3600.0) AS n
+         FROM leads
+         WHERE first_contacted_at IS NOT NULL
+           AND substr(first_contacted_at,1,10) BETWEEN ? AND ?
+           AND first_contacted_at::timestamp >= created_at::timestamp${f.sql}`,
+        [range.from, range.to, ...f.params],
+      );
+      return row?.n === null || row?.n === undefined ? null : Number(row.n);
     },
   },
   {
     key: "leads_calificados",
     label: "Leads calificados",
-    unit: "número",
+    unit: "numero",
     scope: "setter",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("setter_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads
@@ -235,10 +239,10 @@ const setter: MetricDef[] = [
   {
     key: "reuniones_agendadas",
     label: "Reuniones agendadas",
-    unit: "número",
+    unit: "numero",
     scope: "setter",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("setter_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads
@@ -254,27 +258,26 @@ const setter: MetricDef[] = [
     scope: "setter",
     higherIsBetter: true,
     help: "Reuniones realizadas sobre reuniones que ya tuvieron fecha (realizadas + no-show).",
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("setter_id", userIds);
-      const row = db()
-        .prepare(
-          `SELECT SUM(meeting_outcome = 'realizada')              AS ok,
-                  SUM(meeting_outcome IN ('realizada','no_show')) AS total
-           FROM leads
-           WHERE meeting_at IS NOT NULL
-             AND substr(meeting_at,1,10) BETWEEN ? AND ?${f.sql}`,
-        )
-        .get(range.from, range.to, ...f.params) as { ok: number | null; total: number | null };
-      return ratio(Number(row.ok ?? 0), Number(row.total ?? 0));
+      const row = await one<{ ok: number | null; total: number | null }>(
+        `SELECT COUNT(*) FILTER (WHERE meeting_outcome = 'realizada')              AS ok,
+                COUNT(*) FILTER (WHERE meeting_outcome IN ('realizada','no_show')) AS total
+         FROM leads
+         WHERE meeting_at IS NOT NULL
+           AND substr(meeting_at,1,10) BETWEEN ? AND ?${f.sql}`,
+        [range.from, range.to, ...f.params],
+      );
+      return ratio(Number(row?.ok ?? 0), Number(row?.total ?? 0));
     },
   },
   {
     key: "follow_ups",
     label: "Follow-ups",
-    unit: "número",
+    unit: "numero",
     scope: "setter",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("user_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM lead_events
@@ -286,10 +289,10 @@ const setter: MetricDef[] = [
   {
     key: "recuperaciones",
     label: "Recuperaciones de no-show",
-    unit: "número",
+    unit: "numero",
     scope: "setter",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("setter_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM leads
@@ -305,30 +308,29 @@ const setter: MetricDef[] = [
 
 const paidMedia: MetricDef[] = [
   {
-    key: "inversión",
+    key: "inversion",
     label: "Inversión publicitaria",
     unit: "moneda",
     scope: "paid_media",
     higherIsBetter: true,
     help: "Gastos de categoría Paid Media en el período. Fuente única compartida con Finanzas.",
-    compute: ({ range }) => {
-      const rows = db()
-        .prepare(
-          `SELECT amount_cents AS cents, currency FROM expenses
-           WHERE category = 'paid_media' AND date BETWEEN ? AND ?`,
-        )
-        .all(range.from, range.to) as { cents: number; currency: Currency }[];
-      return moneyMajor(rows);
+    compute: async ({ range, fx }) => {
+      const rows = await all<{ cents: number; currency: Currency }>(
+        `SELECT amount_cents AS cents, currency FROM expenses
+         WHERE category = 'paid_media' AND date BETWEEN ? AND ?`,
+        [range.from, range.to],
+      );
+      return moneyMajor(rows, fx);
     },
   },
   {
     key: "leads_pauta",
     label: "Leads de pauta",
-    unit: "número",
+    unit: "numero",
     scope: "paid_media",
     higherIsBetter: true,
-    compute: ({ range }) => {
-      const s = paidSourceFilter();
+    compute: async ({ range }) => {
+      const s = await paidSourceFilter();
       return count(
         `SELECT COUNT(*) AS n FROM leads WHERE entered_at BETWEEN ? AND ?${s.sql}`,
         [range.from, range.to, ...s.params],
@@ -342,20 +344,22 @@ const paidMedia: MetricDef[] = [
     scope: "paid_media",
     higherIsBetter: false,
     help: "Inversión dividida por leads de pauta.",
-    compute: (ctx) => {
-      const inversión = byKey("inversión").compute(ctx) ?? 0;
-      const leads = byKey("leads_pauta").compute(ctx) ?? 0;
-      return leads > 0 ? inversión / leads : null;
+    compute: async (ctx) => {
+      const [inversion, leads] = await Promise.all([
+        byKey("inversion").compute(ctx),
+        byKey("leads_pauta").compute(ctx),
+      ]);
+      return (leads ?? 0) > 0 ? (inversion ?? 0) / (leads as number) : null;
     },
   },
   {
     key: "leads_calificados_pauta",
     label: "Leads calificados de pauta",
-    unit: "número",
+    unit: "numero",
     scope: "paid_media",
     higherIsBetter: true,
-    compute: ({ range }) => {
-      const s = paidSourceFilter();
+    compute: async ({ range }) => {
+      const s = await paidSourceFilter();
       return count(
         `SELECT COUNT(*) AS n FROM leads
          WHERE substr(qualified_at,1,10) BETWEEN ? AND ?${s.sql}`,
@@ -366,10 +370,10 @@ const paidMedia: MetricDef[] = [
   {
     key: "creativos_tests",
     label: "Creativos y tests",
-    unit: "número",
+    unit: "numero",
     scope: "paid_media",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("user_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM campaign_assets WHERE date BETWEEN ? AND ?${f.sql}`,
@@ -380,12 +384,12 @@ const paidMedia: MetricDef[] = [
   {
     key: "reuniones_generadas_pauta",
     label: "Reuniones generadas por pauta",
-    unit: "número",
+    unit: "numero",
     scope: "paid_media",
     higherIsBetter: true,
     help: "Contribución de paid media a la agenda comercial.",
-    compute: ({ range }) => {
-      const s = paidSourceFilter();
+    compute: async ({ range }) => {
+      const s = await paidSourceFilter();
       return count(
         `SELECT COUNT(*) AS n FROM leads
          WHERE substr(meeting_scheduled_at,1,10) BETWEEN ? AND ?${s.sql}`,
@@ -401,10 +405,10 @@ const desarrollo: MetricDef[] = [
   {
     key: "proyectos_asignados",
     label: "Proyectos asignados",
-    unit: "número",
+    unit: "numero",
     scope: "desarrollo",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -417,10 +421,10 @@ const desarrollo: MetricDef[] = [
   {
     key: "proyectos_terminados",
     label: "Proyectos terminados",
-    unit: "número",
+    unit: "numero",
     scope: "desarrollo",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -436,27 +440,27 @@ const desarrollo: MetricDef[] = [
     unit: "porcentaje",
     scope: "desarrollo",
     higherIsBetter: true,
-    help: "De lo entregado en el período, cuánto llego antes de su fecha comprometida.",
-    compute: ({ range, userIds }) => {
+    help: "De lo entregado en el período, cuánto llegó antes de su fecha comprometida.",
+    compute: async ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
-      const row = db()
-        .prepare(
-          `SELECT SUM(substr(done_at,1,10) <= due_date) AS ok, COUNT(*) AS total
-           FROM tasks
-           WHERE status = 'hecho' AND due_date IS NOT NULL
-             AND substr(done_at,1,10) BETWEEN ? AND ?${f.sql}`,
-        )
-        .get(range.from, range.to, ...f.params) as { ok: number | null; total: number | null };
-      return ratio(Number(row.ok ?? 0), Number(row.total ?? 0));
+      const row = await one<{ ok: number | null; total: number | null }>(
+        `SELECT COUNT(*) FILTER (WHERE substr(done_at,1,10) <= due_date) AS ok,
+                COUNT(*)                                                 AS total
+         FROM tasks
+         WHERE status = 'hecho' AND due_date IS NOT NULL
+           AND substr(done_at,1,10) BETWEEN ? AND ?${f.sql}`,
+        [range.from, range.to, ...f.params],
+      );
+      return ratio(Number(row?.ok ?? 0), Number(row?.total ?? 0));
     },
   },
   {
     key: "landings_activas",
     label: "Landings activas",
-    unit: "número",
+    unit: "numero",
     scope: "desarrollo",
     higherIsBetter: true,
-    compute: ({ range }) =>
+    compute: async ({ range }) =>
       count(
         `SELECT COUNT(*) AS n FROM clients
          WHERE landing = 1 AND start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
@@ -466,10 +470,10 @@ const desarrollo: MetricDef[] = [
   {
     key: "pendientes",
     label: "Pendientes abiertos",
-    unit: "número",
+    unit: "numero",
     scope: "desarrollo",
     higherIsBetter: false,
-    compute: ({ userIds }) => {
+    compute: async ({ userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -482,10 +486,10 @@ const desarrollo: MetricDef[] = [
   {
     key: "incidencias",
     label: "Correcciones e incidencias",
-    unit: "número",
+    unit: "numero",
     scope: "desarrollo",
     higherIsBetter: false,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -497,16 +501,16 @@ const desarrollo: MetricDef[] = [
   },
 ];
 
-// --- métricas de dirección / gestión ---------------------------------------
+// --- métricas de marketing y contenido -------------------------------------
 
-const direccion: MetricDef[] = [
+const marketing: MetricDef[] = [
   {
     key: "piezas_planificadas",
     label: "Piezas planificadas",
-    unit: "número",
-    scope: "direccion",
+    unit: "numero",
+    scope: "marketing",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -518,10 +522,10 @@ const direccion: MetricDef[] = [
   {
     key: "piezas_publicadas",
     label: "Piezas publicadas",
-    unit: "número",
-    scope: "direccion",
+    unit: "numero",
+    scope: "marketing",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -534,22 +538,24 @@ const direccion: MetricDef[] = [
     key: "cumplimiento_contenido",
     label: "Cumplimiento del calendario",
     unit: "porcentaje",
-    scope: "direccion",
+    scope: "marketing",
     higherIsBetter: true,
     help: "Piezas publicadas sobre piezas planificadas en el período.",
-    compute: (ctx) => {
-      const publicadas = byKey("piezas_publicadas").compute(ctx) ?? 0;
-      const planificadas = byKey("piezas_planificadas").compute(ctx) ?? 0;
-      return ratio(publicadas, planificadas);
+    compute: async (ctx) => {
+      const [publicadas, planificadas] = await Promise.all([
+        byKey("piezas_publicadas").compute(ctx),
+        byKey("piezas_planificadas").compute(ctx),
+      ]);
+      return ratio(publicadas ?? 0, planificadas ?? 0);
     },
   },
   {
     key: "linkedin_netflow",
     label: "LinkedIn NetFlow",
-    unit: "número",
-    scope: "direccion",
+    unit: "numero",
+    scope: "marketing",
     higherIsBetter: true,
-    compute: ({ range }) =>
+    compute: async ({ range }) =>
       count(
         `SELECT COUNT(*) AS n FROM tasks
          WHERE category = 'contenido' AND channel = 'linkedin_netflow'
@@ -560,10 +566,10 @@ const direccion: MetricDef[] = [
   {
     key: "linkedin_facundo",
     label: "LinkedIn Facundo",
-    unit: "número",
-    scope: "direccion",
+    unit: "numero",
+    scope: "marketing",
     higherIsBetter: true,
-    compute: ({ range }) =>
+    compute: async ({ range }) =>
       count(
         `SELECT COUNT(*) AS n FROM tasks
          WHERE category = 'contenido' AND channel = 'linkedin_facundo'
@@ -571,6 +577,11 @@ const direccion: MetricDef[] = [
         [range.from, range.to],
       ),
   },
+];
+
+// --- métricas de dirección / gestión ---------------------------------------
+
+const direccion: MetricDef[] = [
   {
     key: "crm_actualizado",
     label: "CRM actualizado",
@@ -578,26 +589,27 @@ const direccion: MetricDef[] = [
     scope: "direccion",
     higherIsBetter: true,
     help: "Oportunidades abiertas con responsable, próxima acción y fecha no vencida.",
-    compute: ({ range }) => {
-      const row = db()
-        .prepare(
-          `SELECT COUNT(*) AS total,
-                  SUM(owner_id IS NOT NULL
-                      AND next_action IS NOT NULL AND trim(next_action) <> ''
-                      AND next_action_date IS NOT NULL AND next_action_date >= ?) AS ok
-           FROM leads WHERE outcome = 'open'`,
-        )
-        .get(range.to) as { total: number | null; ok: number | null };
-      return ratio(Number(row.ok ?? 0), Number(row.total ?? 0));
+    compute: async ({ range }) => {
+      const row = await one<{ total: number | null; ok: number | null }>(
+        `SELECT COUNT(*) AS total,
+                COUNT(*) FILTER (
+                  WHERE owner_id IS NOT NULL
+                    AND next_action IS NOT NULL AND trim(next_action) <> ''
+                    AND next_action_date IS NOT NULL AND next_action_date >= ?
+                ) AS ok
+         FROM leads WHERE outcome = 'open'`,
+        [range.to],
+      );
+      return ratio(Number(row?.ok ?? 0), Number(row?.total ?? 0));
     },
   },
   {
     key: "procesos_abiertos",
     label: "Procesos de gestión abiertos",
-    unit: "número",
+    unit: "numero",
     scope: "direccion",
     higherIsBetter: false,
-    compute: ({ userIds }) => {
+    compute: async ({ userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -609,10 +621,10 @@ const direccion: MetricDef[] = [
   {
     key: "procesos_completados",
     label: "Procesos de gestión completados",
-    unit: "número",
+    unit: "numero",
     scope: "direccion",
     higherIsBetter: true,
-    compute: ({ range, userIds }) => {
+    compute: async ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
       return count(
         `SELECT COUNT(*) AS n FROM tasks
@@ -630,10 +642,10 @@ const empresa: MetricDef[] = [
   {
     key: "clientes_nuevos",
     label: "Clientes nuevos",
-    unit: "número",
+    unit: "numero",
     scope: "empresa",
     higherIsBetter: true,
-    compute: ({ range }) =>
+    compute: async ({ range }) =>
       count(
         `SELECT COUNT(*) AS n FROM clients WHERE start_date BETWEEN ? AND ? AND churned_at IS NULL`,
         [range.from, range.to],
@@ -642,10 +654,10 @@ const empresa: MetricDef[] = [
   {
     key: "clientes_activos",
     label: "Clientes activos",
-    unit: "número",
+    unit: "numero",
     scope: "empresa",
     higherIsBetter: true,
-    compute: ({ range }) =>
+    compute: async ({ range }) =>
       count(
         `SELECT COUNT(*) AS n FROM clients
          WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
@@ -655,10 +667,10 @@ const empresa: MetricDef[] = [
   {
     key: "leads_totales",
     label: "Leads totales",
-    unit: "número",
+    unit: "numero",
     scope: "empresa",
     higherIsBetter: true,
-    compute: ({ range }) =>
+    compute: async ({ range }) =>
       count(`SELECT COUNT(*) AS n FROM leads WHERE entered_at BETWEEN ? AND ?`, [range.from, range.to]),
   },
   {
@@ -667,14 +679,14 @@ const empresa: MetricDef[] = [
     unit: "moneda",
     scope: "empresa",
     higherIsBetter: true,
-    compute: ({ range }) => {
-      const rows = db()
-        .prepare(
-          `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
-           WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
-        )
-        .all(range.to, range.to) as { cents: number; currency: Currency }[];
-      return moneyMajor(rows);
+    sensitive: true,
+    compute: async ({ range, fx }) => {
+      const rows = await all<{ cents: number; currency: Currency }>(
+        `SELECT fee_cents AS cents, fee_currency AS currency FROM clients
+         WHERE start_date <= ? AND (churned_at IS NULL OR churned_at > ?)`,
+        [range.to, range.to],
+      );
+      return moneyMajor(rows, fx);
     },
   },
   {
@@ -683,23 +695,23 @@ const empresa: MetricDef[] = [
     unit: "moneda",
     scope: "empresa",
     higherIsBetter: true,
-    compute: ({ range }) => {
-      const rows = db()
-        .prepare(
-          `SELECT amount_cents AS cents, currency FROM invoices
-           WHERE status = 'cobrada' AND substr(paid_at,1,10) BETWEEN ? AND ?`,
-        )
-        .all(range.from, range.to) as { cents: number; currency: Currency }[];
-      return moneyMajor(rows);
+    sensitive: true,
+    compute: async ({ range, fx }) => {
+      const rows = await all<{ cents: number; currency: Currency }>(
+        `SELECT amount_cents AS cents, currency FROM invoices
+         WHERE status = 'cobrada' AND substr(paid_at,1,10) BETWEEN ? AND ?`,
+        [range.from, range.to],
+      );
+      return moneyMajor(rows, fx);
     },
   },
   {
     key: "churn_clientes",
     label: "Bajas de clientes",
-    unit: "número",
+    unit: "numero",
     scope: "empresa",
     higherIsBetter: false,
-    compute: ({ range }) =>
+    compute: async ({ range }) =>
       count(`SELECT COUNT(*) AS n FROM clients WHERE churned_at BETWEEN ? AND ?`, [range.from, range.to]),
   },
 ];
@@ -710,6 +722,7 @@ export const METRICS: MetricDef[] = [
   ...setter,
   ...paidMedia,
   ...desarrollo,
+  ...marketing,
   ...direccion,
 ];
 
@@ -725,8 +738,17 @@ export function findMetric(key: string): MetricDef | undefined {
   return INDEX.get(key);
 }
 
-export function metricsForArea(area: Area): MetricDef[] {
-  return METRICS.filter((m) => m.scope === area);
+export function metricsForArea(area: Area, includeSensitive = true): MetricDef[] {
+  return METRICS.filter((m) => m.scope === area && (includeSensitive || !m.sensitive));
+}
+
+/** Métricas que se pueden ofrecer como objetivo a quien está mirando. */
+export function selectableMetrics(includeSensitive: boolean): MetricDef[] {
+  return METRICS.filter((m) => includeSensitive || !m.sensitive);
+}
+
+export function isSensitiveMetric(key: string): boolean {
+  return Boolean(findMetric(key)?.sensitive);
 }
 
 export interface MetricValue {
@@ -738,11 +760,13 @@ export interface MetricValue {
   help?: string;
 }
 
-export function evaluate(def: MetricDef, ctx: MetricContext): MetricValue {
+export async function evaluate(def: MetricDef, ctx: MetricContext): Promise<MetricValue> {
   let value: number | null = null;
   try {
-    value = def.compute(ctx);
-  } catch {
+    value = await def.compute(ctx);
+  } catch (e) {
+    // Una métrica rota no debe tumbar la pantalla entera: se muestra "—".
+    console.error(`Error calculando la métrica ${def.key}:`, e instanceof Error ? e.message : e);
     value = null;
   }
   return {
@@ -753,4 +777,12 @@ export function evaluate(def: MetricDef, ctx: MetricContext): MetricValue {
     higherIsBetter: def.higherIsBetter,
     help: def.help,
   };
+}
+
+/** Contexto listo para usar, con el tipo de cambio ya resuelto. */
+export async function metricContext(
+  range: DateRange,
+  userIds: number[] | null = null,
+): Promise<MetricContext> {
+  return { range, userIds, fx: await loadFx() };
 }

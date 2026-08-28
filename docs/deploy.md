@@ -2,22 +2,86 @@
 
 ## Qué opción elegir
 
-NetFlow guarda todo en **un archivo SQLite**. Eso hace la V1 simple y rápida, pero
-condiciona dónde puede vivir: necesita **un disco que persista** y **un solo proceso
-escribiendo**. Con eso en mente:
+NetFlow usa **PostgreSQL**, así que corre tanto en una plataforma sin servidor como
+en un VPS. Las dos opciones son válidas:
 
-| Opción | Cuándo conviene | Costo aprox. |
+| Opción | Cuándo conviene | Costo |
 |---|---|---|
-| **VPS con Docker** ← recomendada | Es lo que corresponde hoy. Disco propio, respaldos, control total. | USD 5–12/mes |
-| VPS sin Docker (Node + systemd) | Si ya tenés un servidor y no querés Docker. | igual |
-| Vercel / Netlify | **No sirve** tal cual: el disco es efímero, la base se borra en cada deploy. Requiere migrar a Postgres primero. | — |
+| **Netlify + Postgres gestionado** ← la que pediste | Sin servidor que mantener. Deploy con `git push`. | **Gratis** en los planes iniciales |
+| VPS con Docker | Si preferís tener todo en una máquina propia. | USD 5–12/mes |
 
-**Recomendación concreta:** un VPS chico (Hetzner CX22, DigitalOcean, Vultr, Contabo)
-con Docker. Con 2 GB de RAM sobra para todo el equipo de NetFlow.
+En Netlify el disco de las funciones es **efímero**: por eso la base no vive ahí sino
+en un Postgres gestionado, y los archivos adjuntos en Netlify Blobs. La aplicación ya
+está preparada para las dos cosas; no hay nada que configurar en el código.
 
 ---
 
-## Opción A — VPS con Docker (recomendada)
+## Opción A — Netlify (gratis)
+
+### 1. Crear la base
+
+Cualquiera de estas sirve, todas con plan gratuito:
+
+- **Netlify DB** — la más directa: se crea desde el panel del sitio y deja la
+  variable cargada sola.
+- **Neon** — Postgres gestionado con plan gratuito.
+- **Supabase** — Postgres gestionado con plan gratuito.
+
+Copiar la **cadena de conexión agrupada** (dice *pooled* o *pooler*). Es importante:
+sin ella, cada invocación de una función abre su propia conexión y se agota el límite
+de la base.
+
+### 2. Conectar el repositorio
+
+En Netlify: **Add new site → Import an existing project** y elegir el repositorio.
+El `netlify.toml` ya trae el comando de build y el plugin de Next.js, así que no hay
+que configurar nada.
+
+### 3. Cargar las variables
+
+**Site settings → Environment variables:**
+
+| Variable | Valor |
+|---|---|
+| `DATABASE_URL` | la cadena agrupada del paso 1 |
+| `SESSION_SECRET` | `openssl rand -hex 32` |
+| `TZ` | `America/Argentina/Buenos_Aires` |
+
+### 4. Desplegar y sembrar
+
+El primer deploy arranca solo. El esquema se crea al primer arranque
+(`CREATE TABLE IF NOT EXISTS`), pero el equipo y los objetivos hay que sembrarlos
+una vez, desde tu máquina:
+
+```bash
+DATABASE_URL="<la misma cadena>" npm run db:seed
+```
+
+Imprime las seis cuentas y la contraseña inicial. **Cambiarlas desde Ajustes en el
+primer ingreso.**
+
+### 5. Verificar
+
+```bash
+curl -fsS https://<tu-sitio>.netlify.app/api/health
+# {"status":"ok","time":"..."}
+```
+
+`/api/health` comprueba que la base responde, no solo que la función arrancó.
+
+### Sobre el plan gratuito
+
+- La base **se suspende** cuando no se usa y tarda unos cientos de milisegundos en
+  despertar. Para una herramienta interna es imperceptible.
+- El almacenamiento del plan gratuito (medio giga en Neon) alcanza de sobra: este
+  sistema guarda texto y números, no archivos — los adjuntos van a Netlify Blobs.
+- Los **respaldos** los hace el proveedor de la base (Neon y Supabase tienen
+  restauración a un punto en el tiempo). Igual conviene bajar un volcado propio de vez
+  en cuando: `pg_dump "$DATABASE_URL" | gzip > netflow-$(date +%F).sql.gz`
+
+---
+
+## Opción B — VPS con Docker
 
 ### 1. Servidor
 
@@ -41,6 +105,9 @@ cp .env.example .env
 openssl rand -hex 32          # copiar el resultado
 nano .env                     # pegarlo en SESSION_SECRET
 ```
+
+`docker compose` levanta también el PostgreSQL, así que `DATABASE_URL` ya viene
+armada. Conviene poner un `POSTGRES_PASSWORD` propio en el `.env`.
 
 `SESSION_SECRET` es obligatorio: la app **no arranca en producción sin él**. Si se
 cambia, se cierran todas las sesiones abiertas (que es lo que uno quiere si se filtró).
@@ -93,23 +160,28 @@ curl -fsS https://dashboard.netflow.com.ar/api/health
 
 **Esto no es opcional.** Toda la operación de NetFlow va a vivir en un archivo.
 
-`docker compose up` ya levanta un servicio `backup` que copia la base **una vez por día**
-a `./backups/`, conserva las últimas 14 y verifica cada copia antes de darla por buena.
-Usa la API de backup de SQLite, no `cp`: copiar el archivo con la app escribiendo puede
-dejar una copia corrupta.
+**En Netlify** los respaldos los hace el proveedor de la base (Neon y Supabase tienen
+restauración a un punto en el tiempo). Conviene además bajar un volcado propio:
+
+```bash
+pg_dump "$DATABASE_URL" | gzip > netflow-$(date +%F).sql.gz
+```
+
+**Con Docker**, `docker compose up` levanta un servicio `backup` que hace `pg_dump`
+comprimido **una vez por día** a `./backups/` y conserva los últimos 14.
 
 Respaldo manual:
 
 ```bash
-docker compose exec backup node scripts/backup.mjs
+docker compose exec backup sh -c 'pg_dump -h postgres -U netflow -d netflow | gzip > /backups/manual.sql.gz'
 ```
 
 Restaurar:
 
 ```bash
 docker compose stop app
-docker compose run --rm -v ./backups:/backups backup \
-  sh -c "cp /backups/netflow-2026-08-28T03-00-00.db /data/netflow.db"
+docker compose exec -T postgres psql -U netflow -d netflow -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+gunzip -c backups/netflow-2026-08-28.sql.gz | docker compose exec -T postgres psql -U netflow -d netflow
 docker compose start app
 ```
 
@@ -138,7 +210,7 @@ paso de migración. Los datos están en el volumen `netflow-data` y no los toca 
 
 ---
 
-## Opción B — VPS sin Docker
+## Opción C — VPS sin Docker
 
 ```bash
 apt install -y nodejs npm
@@ -189,8 +261,9 @@ Respaldo diario en el cron:
 
 | Variable | Obligatoria | Para qué |
 |---|:---:|---|
+| `DATABASE_URL` | **sí** | Conexión a PostgreSQL. En Netlify, la cadena **agrupada**. |
 | `SESSION_SECRET` | **sí** | Firma las cookies de sesión. `openssl rand -hex 32`. |
-| `DATABASE_PATH` | no | Ruta del archivo SQLite. En Docker: `/data/netflow.db`. |
+| `UPLOADS_DIR` | no | Carpeta de adjuntos fuera de Netlify. En Netlify se usa Blobs. |
 | `TZ` | recomendada | `America/Argentina/Buenos_Aires`. Sin esto las fechas usan la zona del servidor. |
 | `INTEGRATIONS_INBOUND_TOKEN` | no | Habilita el endpoint de leads entrantes. Vacío = cerrado. |
 | `CALENDLY_WEBHOOK_SIGNING_KEY` | no | Habilita el webhook de Calendly. Vacío = cerrado. |
@@ -201,29 +274,15 @@ por defecto, nunca abiertos.
 
 ---
 
-## Si más adelante hace falta migrar a Postgres
-
-Con el equipo actual, SQLite aguanta de sobra: soporta cientos de miles de registros y
-el cuello es la escritura concurrente, que acá no existe. Conviene migrar cuando pase
-alguna de estas cosas:
-
-- Se necesita más de un proceso escribiendo (varias instancias, autoescalado).
-- Se quiere desplegar en una plataforma sin disco persistente (Vercel).
-- Hace falta acceso concurrente desde otra herramienta.
-
-El acceso a datos está aislado en `src/lib/db.ts` y las consultas son SQL estándar, así
-que la migración es acotada: reemplazar el driver, adaptar los `INSERT ... ON CONFLICT`
-y correr un volcado. No hace falta anticiparlo ahora.
-
 ---
 
 ## Checklist antes de cargar datos reales
 
+- [ ] `DATABASE_URL` apuntando a la cadena **agrupada** del Postgres
 - [ ] `SESSION_SECRET` propio, generado con `openssl rand -hex 32`
 - [ ] Contraseñas del seed cambiadas desde Ajustes
 - [ ] HTTPS andando (sin esto las cookies de sesión viajan en claro)
 - [ ] `/api/health` responde `ok`
-- [ ] El servicio de respaldo corrió al menos una vez
-- [ ] Los respaldos se copian **fuera** del servidor
+- [ ] Un volcado de respaldo hecho y guardado fuera de la plataforma
 - [ ] Una restauración probada de punta a punta
 - [ ] `TZ` configurada en Buenos Aires

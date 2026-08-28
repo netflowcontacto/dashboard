@@ -9,23 +9,23 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:reset": "node scripts/reset.mjs",
     "db:seed": "node scripts/seed.mjs",
-    "db:backup": "node scripts/backup.mjs",
     "postbuild": "node scripts/postbuild.mjs"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.0.2",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "next": "15.5.24",
+    "pg": "^8.23.0",
     "react": "19.1.9",
     "react-dom": "19.1.9",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.13",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "tailwindcss": "^4.3.3",

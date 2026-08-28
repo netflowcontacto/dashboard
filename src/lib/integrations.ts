@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { getDb } from "./db";
+import { all, one, run, insert, tx } from "./db";
 import { todayISO } from "./dates";
 
 /**
@@ -87,11 +87,17 @@ export const INTEGRATIONS: IntegrationDef[] = [
   },
 ];
 
-export function integrationStatuses() {
-  const rows = getDb().prepare("SELECT * FROM integrations").all() as {
-    key: string; status: string; last_sync_at: string | null; last_error: string; notes: string;
-  }[];
+export async function integrationStatuses() {
+  const [rows, counts] = await Promise.all([
+    all<{ key: string; status: string; last_sync_at: string | null; last_error: string; notes: string }>(
+      "SELECT * FROM integrations",
+    ),
+    all<{ source: string; n: number }>(
+      "SELECT source, COUNT(*) AS n FROM integration_events GROUP BY source",
+    ),
+  ]);
   const stored = new Map(rows.map((r) => [r.key, r]));
+  const bySource = new Map(counts.map((c) => [c.source, Number(c.n)]));
 
   return INTEGRATIONS.map((def) => {
     const configured = def.envVars.every((v) => Boolean(process.env[v]));
@@ -102,16 +108,9 @@ export function integrationStatuses() {
       status: row?.status ?? (configured ? "configurada" : "no_configurada"),
       lastSyncAt: row?.last_sync_at ?? null,
       lastError: row?.last_error ?? "",
-      eventCount: eventCount(def.key),
+      eventCount: bySource.get(def.key) ?? 0,
     };
   });
-}
-
-function eventCount(source: string): number {
-  const row = getDb()
-    .prepare("SELECT COUNT(*) AS n FROM integration_events WHERE source = ?")
-    .get(source) as { n: number };
-  return row.n;
 }
 
 /** Verifica el token compartido de los webhooks entrantes. */
@@ -145,45 +144,45 @@ export function verifyCalendlySignature(rawBody: string, header: string | null):
 }
 
 /** Guarda el payload crudo. Devuelve null si ya lo habiamos recibido. */
-export function recordEvent(
+export async function recordEvent(
   source: string,
   externalId: string | null,
   eventType: string,
   payload: unknown,
-): number | null {
+): Promise<number | null> {
   try {
-    const info = getDb()
-      .prepare(
-        `INSERT INTO integration_events (source, external_id, event_type, payload_json)
-         VALUES (?,?,?,?)`,
-      )
-      .run(source, externalId, eventType, JSON.stringify(payload));
-    return Number(info.lastInsertRowid);
+    return await insert(
+      `INSERT INTO integration_events (source, external_id, event_type, payload_json)
+       VALUES (?,?,?,?) RETURNING id`,
+      [source, externalId, eventType, JSON.stringify(payload)],
+    );
   } catch {
     return null; // UNIQUE(source, external_id): evento duplicado, ya procesado
   }
 }
 
-export function markProcessed(eventId: number, result: string, leadId: number | null): void {
-  getDb()
-    .prepare(
-      "UPDATE integration_events SET processed_at = datetime('now'), result = ?, lead_id = ? WHERE id = ?",
-    )
-    .run(result, leadId, eventId);
+export async function markProcessed(
+  eventId: number,
+  result: string,
+  leadId: number | null,
+): Promise<void> {
+  await run(
+    "UPDATE integration_events SET processed_at = nf_now(), result = ?, lead_id = ? WHERE id = ?",
+    [result, leadId, eventId],
+  );
 }
 
-export function touchIntegration(key: string, status: string, error = ""): void {
+export async function touchIntegration(key: string, status: string, error = ""): Promise<void> {
   const def = INTEGRATIONS.find((i) => i.key === key);
-  getDb()
-    .prepare(
-      `INSERT INTO integrations (key, name, status, last_sync_at, last_error, updated_at)
-       VALUES (?,?,?,datetime('now'),?,datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET status = excluded.status,
-                                      last_sync_at = excluded.last_sync_at,
-                                      last_error = excluded.last_error,
-                                      updated_at = datetime('now')`,
-    )
-    .run(key, def?.name ?? key, status, error);
+  await run(
+    `INSERT INTO integrations (key, name, status, last_sync_at, last_error, updated_at)
+     VALUES (?,?,?,nf_now(),?,nf_now())
+     ON CONFLICT (key) DO UPDATE SET status       = EXCLUDED.status,
+                                     last_sync_at = EXCLUDED.last_sync_at,
+                                     last_error   = EXCLUDED.last_error,
+                                     updated_at   = nf_now()`,
+    [key, def?.name ?? key, status, error],
+  );
 }
 
 export interface InboundLead {
@@ -206,84 +205,85 @@ export interface InboundLead {
  * entrar por varios canales, y el CRM duplicado es lo que hace que se
  * abandone.
  */
-export function applyInboundLead(input: InboundLead): { leadId: number; created: boolean } {
-  const db = getDb();
-
-  const defaultOwner = db
-    .prepare(
-      `SELECT id FROM users WHERE active = 1 AND area = 'setter'
-       UNION ALL SELECT id FROM users WHERE active = 1 AND role = 'admin'
-       LIMIT 1`,
-    )
-    .get() as { id: number } | undefined;
+export async function applyInboundLead(
+  input: InboundLead,
+): Promise<{ leadId: number; created: boolean }> {
+  const defaultOwner = await one<{ id: number }>(
+    `SELECT id FROM users WHERE active = 1 AND area = 'setter'
+     UNION ALL SELECT id FROM users WHERE active = 1 AND role = 'admin'
+     LIMIT 1`,
+  );
 
   if (!defaultOwner) throw new Error("No hay usuarios activos para asignar el lead.");
 
   const existing =
     input.email || input.phone
-      ? (db
-          .prepare(
-            `SELECT id FROM leads
-             WHERE outcome = 'open'
-               AND ((? <> '' AND contact_email = ?) OR (? <> '' AND contact_phone = ?))
-             ORDER BY id DESC LIMIT 1`,
-          )
-          .get(input.email ?? "", input.email ?? "", input.phone ?? "", input.phone ?? "") as
-          | { id: number }
-          | undefined)
+      ? await one<{ id: number }>(
+          `SELECT id FROM leads
+           WHERE outcome = 'open'
+             AND ((? <> '' AND contact_email = ?) OR (? <> '' AND contact_phone = ?))
+           ORDER BY id DESC LIMIT 1`,
+          [input.email ?? "", input.email ?? "", input.phone ?? "", input.phone ?? ""],
+        )
       : undefined;
 
   const today = todayISO();
 
   if (existing) {
-    if (input.meetingAt) {
-      db.prepare(
-        `UPDATE leads SET meeting_at = ?, meeting_scheduled_at = COALESCE(meeting_scheduled_at, datetime('now')),
-                          meeting_outcome = 'agendada',
-                          stage = CASE WHEN stage IN ('nuevo','contactado','calificado') THEN 'reunion_agendada' ELSE stage END,
-                          next_action = 'Preparar la reunión',
-                          next_action_date = ?,
-                          updated_at = datetime('now')
-         WHERE id = ?`,
-      ).run(input.meetingAt, input.meetingAt.slice(0, 10), existing.id);
-    }
-    db.prepare(
-      `INSERT INTO lead_events (lead_id, type, detail) VALUES (?, 'integración', ?)`,
-    ).run(existing.id, `Actualizado desde ${input.source}`);
+    await tx(async (q) => {
+      if (input.meetingAt) {
+        await q.run(
+          `UPDATE leads SET meeting_at = ?, meeting_scheduled_at = COALESCE(meeting_scheduled_at, nf_now()),
+                            meeting_outcome = 'agendada',
+                            stage = CASE WHEN stage IN ('nuevo','contactado','calificado')
+                                         THEN 'reunion_agendada' ELSE stage END,
+                            next_action = 'Preparar la reunión',
+                            next_action_date = ?,
+                            updated_at = nf_now()
+           WHERE id = ?`,
+          [input.meetingAt, input.meetingAt.slice(0, 10), existing.id],
+        );
+      }
+      await q.run(
+        `INSERT INTO lead_events (lead_id, type, detail) VALUES (?, 'integracion', ?)`,
+        [existing.id, `Actualizado desde ${input.source}`],
+      );
+    });
     return { leadId: existing.id, created: false };
   }
 
-  const info = db
-    .prepare(
+  const leadId = await tx(async (q) => {
+    const id = await q.insert(
       `INSERT INTO leads (
          name, company, specialty, contact_email, contact_phone, source, entered_at,
          owner_id, setter_id, stage, next_action, next_action_date,
          meeting_at, meeting_scheduled_at, meeting_outcome, notes
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    )
-    .run(
-      input.name,
-      input.company ?? "",
-      input.specialty ?? "",
-      input.email ?? "",
-      input.phone ?? "",
-      input.source,
-      today,
-      defaultOwner.id,
-      defaultOwner.id,
-      input.meetingAt ? "reunion_agendada" : "nuevo",
-      input.meetingAt ? "Preparar la reunión" : "Primer contacto",
-      input.meetingAt ? input.meetingAt.slice(0, 10) : today,
-      input.meetingAt ?? null,
-      input.meetingAt ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
-      input.meetingAt ? "agendada" : "sin_reunion",
-      input.notes ?? "",
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
+      [
+        input.name,
+        input.company ?? "",
+        input.specialty ?? "",
+        input.email ?? "",
+        input.phone ?? "",
+        input.source,
+        today,
+        defaultOwner.id,
+        defaultOwner.id,
+        input.meetingAt ? "reunion_agendada" : "nuevo",
+        input.meetingAt ? "Preparar la reunión" : "Primer contacto",
+        input.meetingAt ? input.meetingAt.slice(0, 10) : today,
+        input.meetingAt ?? null,
+        input.meetingAt ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
+        input.meetingAt ? "agendada" : "sin_reunion",
+        input.notes ?? "",
+      ],
     );
-
-  const leadId = Number(info.lastInsertRowid);
-  getDb()
-    .prepare(`INSERT INTO lead_events (lead_id, type, to_stage, detail) VALUES (?, 'integración', ?, ?)`)
-    .run(leadId, input.meetingAt ? "reunion_agendada" : "nuevo", `Alta automática desde ${input.source}`);
+    await q.run(
+      `INSERT INTO lead_events (lead_id, type, to_stage, detail) VALUES (?, 'integracion', ?, ?)`,
+      [id, input.meetingAt ? "reunion_agendada" : "nuevo", `Alta automática desde ${input.source}`],
+    );
+    return id;
+  });
 
   return { leadId, created: true };
 }

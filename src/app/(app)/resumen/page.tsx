@@ -43,17 +43,17 @@ export default async function ResumenPage({
   });
 
   const today = todayISO();
-  const o = buildOverview(range);
+  const o = await buildOverview(range);
   const f = o.finance;
   const prev = previousRange(range);
-  const prevFinance = financeSummary(prev);
-  const alerts = alertsFor(user).filter((a) => a.severity === "urgente").slice(0, 5);
-  const team = teamPerformance(range);
-  const setup = setupStatus();
+  const prevFinance = await financeSummary(prev);
+  const alerts = (await alertsFor(user)).filter((a) => a.severity === "urgente").slice(0, 5);
+  const team = await teamPerformance(range, true);
+  const setup = await setupStatus();
   const cur = f.currency;
   const daysLeft = daysLeftInPeriod(monthOf(today));
 
-  const cmp = compareMetrics(
+  const cmp = await compareMetrics(
     ["clientes_nuevos", "clientes_activos", "leads_totales", "mrr_total", "ingresos_cobrados"],
     range,
   );
@@ -70,11 +70,11 @@ export default async function ResumenPage({
     return c ? { pct: c.pct, higherIsBetter: c.higherIsBetter, vs: c.vs } : undefined;
   };
 
-  const histClientes = metricHistory("clientes_activos", 6, range.to);
-  const histLeads = metricHistory("leads_totales", 6, range.to);
-  const histMrr = metricHistory("mrr_total", 6, range.to);
+  const histClientes = await metricHistory("clientes_activos", 6, range.to);
+  const histLeads = await metricHistory("leads_totales", 6, range.to);
+  const histMrr = await metricHistory("mrr_total", 6, range.to);
 
-  const trend = monthlyTrend(6, range.to);
+  const trend = await monthlyTrend(6, range.to);
   const expensesByCat = o.funnel.investmentCents;
 
   return (

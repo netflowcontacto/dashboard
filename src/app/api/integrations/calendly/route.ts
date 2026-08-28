@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   applyInboundLead, markProcessed, recordEvent, touchIntegration, verifyCalendlySignature,
 } from "@/lib/integrations";
-import { getDb } from "@/lib/db";
+import { run } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   const eventType = body.event ?? "desconocido";
   const externalId = body.payload?.uri ?? null;
 
-  const eventId = recordEvent("calendly", externalId, eventType, body);
+  const eventId = await recordEvent("calendly", externalId, eventType, body);
   if (eventId === null) {
     return NextResponse.json({ ok: true, duplicated: true });
   }
@@ -56,24 +56,23 @@ export async function POST(request: Request) {
   try {
     if (eventType === "invitee.canceled") {
       const updated = externalId
-        ? getDb()
-            .prepare(
-              `UPDATE leads SET meeting_outcome = 'cancelada', updated_at = datetime('now')
-               WHERE id = (SELECT lead_id FROM integration_events
-                           WHERE source = 'calendly' AND external_id = ? AND lead_id IS NOT NULL
-                           ORDER BY id DESC LIMIT 1)`,
-            )
-            .run(externalId).changes
+        ? await run(
+            `UPDATE leads SET meeting_outcome = 'cancelada', updated_at = nf_now()
+             WHERE id = (SELECT lead_id FROM integration_events
+                         WHERE source = 'calendly' AND external_id = ? AND lead_id IS NOT NULL
+                         ORDER BY id DESC LIMIT 1)`,
+            [externalId],
+          )
         : 0;
-      markProcessed(eventId, updated ? "reunion_cancelada" : "sin_coincidencia", null);
-      touchIntegration("calendly", "activa");
+      await markProcessed(eventId, updated ? "reunion_cancelada" : "sin_coincidencia", null);
+      await touchIntegration("calendly", "activa");
       return NextResponse.json({ ok: true });
     }
 
     const startTime = body.payload?.scheduled_event?.start_time;
     const name = body.payload?.name ?? body.payload?.email ?? "Invitado de Calendly";
 
-    const result = applyInboundLead({
+    const result = await applyInboundLead({
       name,
       email: body.payload?.email,
       phone: body.payload?.text_reminder_number,
@@ -86,28 +85,27 @@ export async function POST(request: Request) {
 
     // Espejo en la tabla de reuniones, para el calendario.
     if (startTime) {
-      getDb()
-        .prepare(
-          `INSERT INTO meetings (title, lead_id, starts_at, ends_at, status, source, external_id)
-           VALUES (?,?,?,?, 'agendada', 'calendly', ?)`,
-        )
-        .run(
+      await run(
+        `INSERT INTO meetings (title, lead_id, starts_at, ends_at, status, source, external_id)
+         VALUES (?,?,?,?, 'agendada', 'calendly', ?)`,
+        [
           body.payload?.scheduled_event?.name ?? "Reunión",
           result.leadId,
           startTime.slice(0, 19).replace("T", " "),
           body.payload?.scheduled_event?.end_time?.slice(0, 19).replace("T", " ") ?? null,
           externalId,
-        );
+        ],
+      );
     }
 
-    markProcessed(eventId, result.created ? "lead_creado" : "reunion_agendada", result.leadId);
-    touchIntegration("calendly", "activa");
+    await markProcessed(eventId, result.created ? "lead_creado" : "reunion_agendada", result.leadId);
+    await touchIntegration("calendly", "activa");
 
     return NextResponse.json({ ok: true, lead_id: result.leadId });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Error desconocido";
-    markProcessed(eventId, `error: ${message}`, null);
-    touchIntegration("calendly", "error", message);
+    await markProcessed(eventId, `error: ${message}`, null);
+    await touchIntegration("calendly", "error", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

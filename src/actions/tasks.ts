@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getDb } from "@/lib/db";
+import { all, one, run, insert } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { todayISO } from "@/lib/dates";
 import { errorMessage, type ActionState } from "@/lib/errors";
 import * as F from "@/lib/form";
@@ -26,10 +27,11 @@ export async function saveTask(_prev: ActionState, fd: FormData): Promise<Action
     }
 
     const id = F.optInt(fd, "id");
-    const db = getDb();
     const previous = id
-      ? (db.prepare("SELECT status, done_at FROM tasks WHERE id = ?").get(id) as
-          { status: string; done_at: string | null } | undefined)
+      ? await one<{ status: string; done_at: string | null }>(
+          "SELECT status, done_at FROM tasks WHERE id = ?",
+          [id],
+        )
       : undefined;
 
     // done_at se maneja solo: se sella al pasar a hecho y se limpia al reabrir.
@@ -55,18 +57,20 @@ export async function saveTask(_prev: ActionState, fd: FormData): Promise<Action
     ];
 
     if (id) {
-      db.prepare(
+      await run(
         `UPDATE tasks SET title=?, description=?, category=?, assignee_id=?, client_id=?, status=?,
                           priority=?, due_date=?, done_at=?, blocker=?, channel=?, planned_date=?,
-                          published_at=?, updated_at=datetime('now')
+                          published_at=?, updated_at=nf_now()
          WHERE id=?`,
-      ).run(...values, id);
+        [...values, id],
+      );
     } else {
-      db.prepare(
-        `INSERT INTO tasks (title, description, category, assignee_id, client_id, status, priority,
-                            due_date, done_at, blocker, channel, planned_date, published_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ).run(...values);
+      await run(
+        `INSERT INTO tasks (title, description, category, assignee_id, created_by, client_id, status,
+                            priority, due_date, done_at, blocker, channel, planned_date, published_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [...values.slice(0, 4), user.id, ...values.slice(4)],
+      );
     }
 
     revalidatePath("/tareas");
@@ -79,24 +83,27 @@ export async function saveTask(_prev: ActionState, fd: FormData): Promise<Action
 
 /** Marcar hecho / reabrir desde el listado, sin abrir la ficha. */
 export async function toggleTask(fd: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
+  if (!can(user, "tareas:editar")) return;
   const id = F.int(fd, "id");
   if (!id) return;
 
-  const db = getDb();
-  const task = db.prepare("SELECT status, category, published_at FROM tasks WHERE id = ?").get(id) as
-    { status: string; category: string; published_at: string | null } | undefined;
+  const task = await one<{ status: string; category: string; published_at: string | null }>(
+    "SELECT status, category, published_at FROM tasks WHERE id = ?",
+    [id],
+  );
   if (!task) return;
 
   if (task.status === "hecho") {
-    db.prepare("UPDATE tasks SET status='pendiente', done_at=NULL, updated_at=datetime('now') WHERE id=?").run(id);
+    await run("UPDATE tasks SET status='pendiente', done_at=NULL, updated_at=nf_now() WHERE id=?", [id]);
   } else {
     // Una pieza de contenido marcada como hecha queda publicada hoy si no
-    // tenia fecha: es lo que hace que el cumplimiento del calendario cierre.
+    // tenía fecha: es lo que hace que el cumplimiento del calendario cierre.
     const publishedAt = task.category === "contenido" ? (task.published_at ?? todayISO()) : task.published_at;
-    db.prepare(
-      "UPDATE tasks SET status='hecho', done_at=?, published_at=?, updated_at=datetime('now') WHERE id=?",
-    ).run(todayISO(), publishedAt, id);
+    await run(
+      "UPDATE tasks SET status='hecho', done_at=?, published_at=?, updated_at=nf_now() WHERE id=?",
+      [todayISO(), publishedAt, id],
+    );
   }
 
   revalidatePath("/tareas");
@@ -104,10 +111,11 @@ export async function toggleTask(fd: FormData): Promise<void> {
 }
 
 export async function deleteTask(fd: FormData): Promise<void> {
-  await requireUser();
+  const user = await requireUser();
+  if (!can(user, "tareas:editar")) return;
   const id = F.int(fd, "id");
   if (!id) return;
-  getDb().prepare("DELETE FROM tasks WHERE id = ?").run(id);
+  await run("DELETE FROM tasks WHERE id = ?", [id]);
   revalidatePath("/tareas");
 }
 
@@ -119,18 +127,17 @@ export async function saveAnnouncement(_prev: ActionState, fd: FormData): Promis
   if (!title) return { error: "El aviso necesita un titulo." };
 
   try {
-    getDb()
-      .prepare(
-        `INSERT INTO announcements (title, body, level, author_id, starts_at, ends_at) VALUES (?,?,?,?,?,?)`,
-      )
-      .run(
+    await run(
+      `INSERT INTO announcements (title, body, level, author_id, starts_at, ends_at) VALUES (?,?,?,?,?,?)`,
+      [
         title,
         F.str(fd, "body"),
         F.pick(fd, "level", ["info", "importante", "urgente"] as const, "info"),
         user.id,
         F.date(fd, "starts_at", todayISO()),
         F.optDate(fd, "ends_at"),
-      );
+      ],
+    );
 
     revalidatePath("/mi-panel");
     revalidatePath("/calendario");

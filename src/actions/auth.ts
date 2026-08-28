@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { getDb } from "@/lib/db";
+import { one } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth";
 import { createSession, destroySession } from "@/lib/session";
 import { homeFor } from "@/lib/permissions";
@@ -19,9 +19,10 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     return { error: "Ingresa email y contraseña." };
   }
 
-  const user = getDb()
-    .prepare("SELECT id, password_hash, role, active FROM users WHERE lower(email) = ?")
-    .get(email) as { id: number; password_hash: string; role: Role; active: number } | undefined;
+  const user = await one<{ id: number; password_hash: string; role: Role; active: number }>(
+    "SELECT id, password_hash, role, active FROM users WHERE lower(email) = ?",
+    [email],
+  );
 
   // Mensaje generico a propósito: no revelamos si el email existe.
   if (!user || user.active !== 1 || !verifyPassword(password, user.password_hash)) {

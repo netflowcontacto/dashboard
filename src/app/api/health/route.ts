@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { one } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   try {
-    getDb().prepare("SELECT 1").get();
+    await one("SELECT 1 AS ok");
     return NextResponse.json({ status: "ok", time: new Date().toISOString() });
   } catch (e) {
     return NextResponse.json(
