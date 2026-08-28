@@ -7,15 +7,15 @@ import type { Area, User } from "../types";
 /**
  * Objetivos y barras de progreso.
  *
- * Principio de diseno (explicito, para que no se pierda):
+ * Principio de diseño (explicito, para que no se pierda):
  *
  *  1. La barra individual mide OBJETIVO vs RESULTADO. No cuenta tareas.
  *     Nadie llega al 100% haciendo volumen de cosas irrelevantes: solo
- *     suben las metricas que alguien definio como objetivo del mes.
+ *     suben las métricas que alguien definio como objetivo del mes.
  *
  *  2. Si una persona no tiene objetivos cargados, su progreso es `null`
  *     ("sin objetivos definidos"), NUNCA 0% ni 100%. Un dashboard que
- *     inventa un numero es peor que uno que dice que le falta informacion.
+ *     inventa un número es peor que uno que dice que le falta información.
  *
  *  3. El progreso agregado tapa cada objetivo al 100%: sobrecumplir uno no
  *     compensa incumplir otro. Se ve el sobrecumplimiento en el detalle,
@@ -47,7 +47,7 @@ export interface ObjectiveProgress {
   /** achievement * 100, redondeado para mostrar */
   pct: number | null;
   onTrack: boolean | null;
-  /** Ritmo necesario segun los dias transcurridos del periodo */
+  /** Ritmo necesario según los días transcurridos del período */
   expectedPct: number;
   missing: number | null;
 }
@@ -66,7 +66,7 @@ function periodRange(period: string): DateRange {
   return { from, to: endOfMonth(from), preset: "mes", label: period };
 }
 
-/** Porcentaje del periodo ya transcurrido (0..100). */
+/** Porcentaje del período ya transcurrido (0..100). */
 export function periodElapsedPct(period: string, asOf = todayISO()): number {
   const { from, to } = periodRange(period);
   if (asOf < from) return 0;
@@ -136,7 +136,7 @@ export function progressFor(objectives: ObjectiveRow[], period: string, asOf = t
     return {
       objective: o,
       label: o.label || def?.label || o.metric_key,
-      unit: def?.unit ?? "numero",
+      unit: def?.unit ?? "número",
       current: value,
       target: o.target_value,
       achievement,

@@ -13,7 +13,7 @@ const SOURCES = [
 ];
 
 const MEETING_OUTCOMES = [
-  ["sin_reunion", "Sin reunion"],
+  ["sin_reunion", "Sin reunión"],
   ["agendada", "Agendada"],
   ["realizada", "Realizada"],
   ["no_show", "No-show"],
@@ -36,8 +36,8 @@ function dtLocal(value: string | null): string {
 
 /**
  * Ficha de oportunidad. Los tres campos que el CRM no deja vacios
- * (responsable, proxima accion y fecha) estan marcados como obligatorios
- * y la validacion se repite del lado del servidor y de la base.
+ * (responsable, próxima acción y fecha) están marcados como obligatorios
+ * y la validación se repite del lado del servidor y de la base.
  */
 export default function LeadForm({
   lead,
@@ -73,7 +73,7 @@ export default function LeadForm({
         <Field label="Email de contacto">
           <input className="field" type="email" name="contact_email" defaultValue={lead?.contact_email} />
         </Field>
-        <Field label="Telefono de contacto">
+        <Field label="Teléfono de contacto">
           <input className="field" name="contact_phone" defaultValue={lead?.contact_phone} />
         </Field>
         <Field label="Origen del lead">
@@ -100,7 +100,7 @@ export default function LeadForm({
             required
           />
         </Field>
-        <Field label="Responsable" required hint="Quien tiene la proxima accion.">
+        <Field label="Responsable" required hint="Quien tiene la próxima acción.">
           <select className="field" name="owner_id" defaultValue={lead?.owner_id ?? ""} required>
             <option value="" disabled>
               Elegir responsable
@@ -134,7 +134,7 @@ export default function LeadForm({
             ))}
           </select>
         </Field>
-        <Field label="Closer" hint="Quien lleva la reunion y cierra.">
+        <Field label="Closer" hint="Quien lleva la reunión y cierra.">
           <select className="field" name="closer_id" defaultValue={lead?.closer_id ?? ""}>
             <option value="">—</option>
             {users.map((u) => (
@@ -157,18 +157,18 @@ export default function LeadForm({
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-          Proxima accion (obligatoria mientras este abierta)
+          Próxima acción (obligatoria mientras este abierta)
         </legend>
-        <Field label="Proxima accion" required>
+        <Field label="Próxima acción" required>
           <input
             className="field"
             name="next_action"
             defaultValue={lead?.next_action ?? ""}
-            placeholder="Ej: llamar para confirmar reunion"
+            placeholder="Ej: llamar para confirmar reunión"
             required
           />
         </Field>
-        <Field label="Fecha de proxima accion" required>
+        <Field label="Fecha de próxima acción" required>
           <input
             className="field"
             type="date"
@@ -186,9 +186,9 @@ export default function LeadForm({
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-          Reunion
+          Reunión
         </legend>
-        <Field label="Fecha de la reunion">
+        <Field label="Fecha de la reunión">
           <input
             className="field"
             type="datetime-local"
@@ -196,7 +196,7 @@ export default function LeadForm({
             defaultValue={dtLocal(lead?.meeting_at ?? null)}
           />
         </Field>
-        <Field label="Estado de la reunion">
+        <Field label="Estado de la reunión">
           <select className="field" name="meeting_outcome" defaultValue={lead?.meeting_outcome ?? "sin_reunion"}>
             {MEETING_OUTCOMES.map(([v, l]) => (
               <option key={v} value={v}>

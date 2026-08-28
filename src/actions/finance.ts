@@ -15,8 +15,8 @@ const CURRENCIES = ["ARS", "USD"] as const;
 /**
  * Alta de gasto.
  *
- * Direccion puede cargar cualquier categoria. Paid Media puede cargar
- * UNICAMENTE inversion publicitaria: es su herramienta de trabajo y a la vez
+ * Dirección puede cargar cualquier categoría. Paid Media puede cargar
+ * UNICAMENTE inversión publicitaria: es su herramienta de trabajo y a la vez
  * la fuente del CPL y del CAC. No le da ninguna visibilidad sobre el resto
  * de los costos de la empresa.
  */
@@ -93,7 +93,7 @@ export async function deleteExpense(fd: FormData): Promise<void> {
 /** Saldo de caja declarado a mano. Es la base del runway. */
 export async function saveCashSnapshot(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!can(user, "finanzas:cargar")) return { error: "Solo direccion puede cargar la caja." };
+  if (!can(user, "finanzas:cargar")) return { error: "Solo dirección puede cargar la caja." };
 
   try {
     const account = F.optStr(fd, "account");
@@ -125,7 +125,7 @@ export async function saveCashSnapshot(_prev: ActionState, fd: FormData): Promis
 /** Tipo de cambio de referencia y moneda base para consolidar ARS/USD. */
 export async function saveFxSettings(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!can(user, "ajustes:gestionar")) return { error: "Solo direccion puede cambiar los ajustes." };
+  if (!can(user, "ajustes:gestionar")) return { error: "Solo dirección puede cambiar los ajustes." };
 
   const rate = F.num(fd, "fx_ars_per_usd", 0);
   if (rate <= 0) return { error: "El tipo de cambio tiene que ser mayor a cero." };
@@ -139,7 +139,7 @@ export async function saveFxSettings(_prev: ActionState, fd: FormData): Promise<
 
 export async function saveOperationalSettings(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!can(user, "ajustes:gestionar")) return { error: "Solo direccion puede cambiar los ajustes." };
+  if (!can(user, "ajustes:gestionar")) return { error: "Solo dirección puede cambiar los ajustes." };
 
   setSetting("sla_primer_contacto_horas", String(Math.max(1, F.num(fd, "sla_primer_contacto_horas", 24))));
   setSetting("dias_follow_up_propuesta", String(Math.max(1, F.num(fd, "dias_follow_up_propuesta", 5))));

@@ -72,7 +72,7 @@ export default async function ObjetivosPage({
   const user = await requireUser();
   const sp = await searchParams;
   const today = todayISO();
-  const period = /^\d{4}-\d{2}$/.test(String(sp.periodo ?? "")) ? String(sp.periodo) : monthOf(today);
+  const period = /^\d{4}-\d{2}$/.test(String(sp.período ?? "")) ? String(sp.período) : monthOf(today);
 
   const editar = can(user, "objetivos:cargar");
   const verTodos = can(user, "equipo:ver_todos");
@@ -85,7 +85,7 @@ export default async function ObjetivosPage({
     .map((a) => ({ area: a, progress: areaProgress(a, period, today) }))
     .filter((a) => a.progress.objectives.length > 0);
 
-  // El equipo ve solo sus propios objetivos individuales. Direccion ve todos,
+  // El equipo ve solo sus propios objetivos individuales. Dirección ve todos,
   // pero en orden fijo por persona: no es un ranking.
   const people = (verTodos ? activeUsers() : activeUsers().filter((u) => u.id === user.id)).map((u) => ({
     user: u,
@@ -104,18 +104,18 @@ export default async function ObjetivosPage({
     <>
       <PageHeader
         title="Objetivos"
-        description={`${formatPeriod(period)} · ${daysLeft} dia(s) restantes · ${Math.round(elapsed)}% del periodo transcurrido.`}
+        description={`${formatPeriod(period)} · ${daysLeft} día(s) restantes · ${Math.round(elapsed)}% del período transcurrido.`}
       >
         <form className="flex items-end gap-2">
           <input
-            name="periodo"
+            name="período"
             defaultValue={period}
             pattern="\d{4}-\d{2}"
             className="field w-32 py-1.5 text-sm"
-            aria-label="Periodo"
+            aria-label="Período"
           />
           <button type="submit" className="btn py-1.5 text-sm">
-            Ver periodo
+            Ver período
           </button>
         </form>
       </PageHeader>
@@ -126,16 +126,16 @@ export default async function ObjetivosPage({
           value={company.pct === null ? "sin objetivos" : formatPct(company.pct)}
           tone={company.pct === null ? "neutral" : company.status === "atrasado" ? "risk" : "ok"}
         />
-        <StatCard label="Ritmo esperado" value={formatPct(elapsed)} hint="Segun los dias del periodo" />
-        <StatCard label="Dias restantes" value={daysLeft} />
+        <StatCard label="Ritmo esperado" value={formatPct(elapsed)} hint="Según los días del período" />
+        <StatCard label="Días restantes" value={daysLeft} />
         <StatCard label="Objetivos cargados" value={listObjectives(period).length} />
       </div>
 
       <Card className="mt-4" title="Objetivos de empresa">
         {company.objectives.length === 0 ? (
           <EmptyState
-            title="Sin objetivos de empresa para este periodo"
-            detail="El primero deberia ser el objetivo general del mes: clientes nuevos."
+            title="Sin objetivos de empresa para este período"
+            detail="El primero debería ser el objetivo general del mes: clientes nuevos."
           />
         ) : (
           <>
@@ -172,7 +172,7 @@ export default async function ObjetivosPage({
         title={verTodos ? "Objetivos individuales" : "Mis objetivos"}
         subtitle={
           verTodos
-            ? "Cada persona contra su propio objetivo. El orden es fijo y no hay comparacion entre personas."
+            ? "Cada persona contra su propio objetivo. El orden es fijo y no hay comparación entre personas."
             : undefined
         }
       >
@@ -184,7 +184,7 @@ export default async function ObjetivosPage({
                   {person.name}
                   <span className="ml-2 text-xs font-normal text-faint">{AREA_LABEL[person.area]}</span>
                 </h3>
-                <p className="mt-1 text-xs text-faint">Sin objetivos cargados para este periodo.</p>
+                <p className="mt-1 text-xs text-faint">Sin objetivos cargados para este período.</p>
               </div>
             ) : (
               <div key={person.id}>

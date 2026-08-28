@@ -15,19 +15,19 @@ const SCOPES = ["empresa", "area", "persona"] as const;
 
 export async function saveObjective(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!can(user, "objetivos:cargar")) return { error: "Solo direccion puede cargar objetivos." };
+  if (!can(user, "objetivos:cargar")) return { error: "Solo dirección puede cargar objetivos." };
 
   try {
     const scope = F.pick(fd, "scope", SCOPES, "empresa");
     const metricKey = F.str(fd, "metric_key");
     const def = findMetric(metricKey);
-    if (!def) return { error: "Elegi una metrica valida." };
+    if (!def) return { error: "Elegi una métrica valida." };
 
     const target = F.num(fd, "target_value", 0);
     if (target <= 0) return { error: "El objetivo tiene que ser mayor a cero." };
 
     const period = F.str(fd, "period") || monthOf(todayISO());
-    if (!/^\d{4}-\d{2}$/.test(period)) return { error: "Periodo invalido (formato AAAA-MM)." };
+    if (!/^\d{4}-\d{2}$/.test(period)) return { error: "Período invalido (formato AAAA-MM)." };
 
     // El scope tiene que ser coherente: la base lo valida igual, pero acá
     // damos un mensaje entendible antes de llegar al CHECK.
@@ -81,7 +81,7 @@ export async function deleteObjective(fd: FormData): Promise<void> {
 }
 
 /**
- * Copia los objetivos de un periodo al siguiente. Cargar objetivos mes a mes
+ * Copia los objetivos de un período al siguiente. Cargar objetivos mes a mes
  * a mano es el motivo mas comun por el que un dashboard se abandona.
  */
 export async function copyObjectives(fd: FormData): Promise<void> {

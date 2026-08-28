@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   if (!process.env.INTEGRATIONS_INBOUND_TOKEN) {
     return NextResponse.json(
-      { error: "Integracion no configurada. Definir INTEGRATIONS_INBOUND_TOKEN." },
+      { error: "Integración no configurada. Definir INTEGRATIONS_INBOUND_TOKEN." },
       { status: 503 },
     );
   }

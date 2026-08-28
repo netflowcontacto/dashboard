@@ -6,12 +6,13 @@ import { resolveRange, monthOf, formatPeriod, formatDate, formatDateTime, todayI
 import { performanceFor } from "@/lib/metrics/team";
 import { areaProgress, companyProgress, periodElapsedPct, headlineObjective } from "@/lib/metrics/objectives";
 import { areaMetrics } from "@/lib/metrics/team";
-import { alertsFor } from "@/lib/alerts";
+import { alertsFor, SEVERITY_LABEL } from "@/lib/alerts";
 import { baseCurrency } from "@/lib/fx";
 import { AREA_LABEL } from "@/lib/types";
 import { Badge, Card, EmptyState, PageHeader, ProgressBar, StatCard, formatMetric, formatPct } from "@/components/ui";
 import RangePicker from "@/components/RangePicker";
 import TaskToggle from "../tareas/TaskToggle";
+import { MEETING_OUTCOME_LABEL, TASK_CATEGORY_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export const dynamic = "force-dynamic";
  *
  * NO muestra (garantizado por permisos, no por omision de la UI): caja total,
  * margenes, costos de otras personas, capital disponible ni rentabilidad.
- * Ninguna consulta financiera se ejecuta en esta pagina para quien no tiene
+ * Ninguna consulta financiera se ejecuta en esta página para quien no tiene
  * el permiso 'finanzas:ver'.
  */
 export default async function MiPanelPage({
@@ -127,7 +128,7 @@ export default async function MiPanelPage({
 
       {noAccess && (
         <p className="mb-4 rounded-lg border border-warn-soft bg-warn-soft px-3 py-2 text-sm text-warn">
-          Esa seccion es de direccion. Aca tenes todo lo tuyo.
+          Esa sección es de dirección. Acá tenes todo lo tuyo.
         </p>
       )}
 
@@ -145,7 +146,7 @@ export default async function MiPanelPage({
             <div className="min-w-56 flex-1">
               <div className="mb-1 flex justify-between text-xs text-muted">
                 <span>{formatPct(headline.pct)} cumplido</span>
-                <span className="text-faint">quedan {company.daysLeft} dia(s)</span>
+                <span className="text-faint">quedan {company.daysLeft} día(s)</span>
               </div>
               <ProgressBar pct={headline.pct} expectedPct={elapsed} size="lg" />
             </div>
@@ -156,7 +157,7 @@ export default async function MiPanelPage({
       </Card>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Clientes nuevos del periodo" value={newClients.n} tone={newClients.n > 0 ? "ok" : "neutral"} />
+        <StatCard label="Clientes nuevos del período" value={newClients.n} tone={newClients.n > 0 ? "ok" : "neutral"} />
         <StatCard
           label="Mi cumplimiento"
           value={me.progress.pct === null ? "sin objetivos" : formatPct(me.progress.pct)}
@@ -174,7 +175,7 @@ export default async function MiPanelPage({
       <Card
         className="mt-4"
         title="Mi resultado"
-        subtitle="Contra mis objetivos del mes. Solo lo ves vos y direccion."
+        subtitle="Contra mis objetivos del mes. Solo lo ves vos y dirección."
       >
         <ProgressBar
           pct={me.progress.pct}
@@ -215,7 +216,7 @@ export default async function MiPanelPage({
 
         <div className="mt-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-            Mis metricas de la funcion
+            Mis métricas de la función
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {me.metrics.map((m) => (
@@ -251,7 +252,7 @@ export default async function MiPanelPage({
                         {t.title}
                       </p>
                       <p className="text-xs text-faint">
-                        {t.category}
+                        {TASK_CATEGORY_LABEL[t.category] ?? t.category}
                         {t.due_date && (
                           <span className={overdue ? "text-risk" : ""}> · vence {formatDate(t.due_date)}</span>
                         )}
@@ -268,7 +269,7 @@ export default async function MiPanelPage({
 
         {/* Calendario / reuniones ------------------------------------------ */}
         <Card
-          title="Mis proximas reuniones"
+          title="Mis próximas reuniones"
           action={
             <Link href="/calendario" className="text-xs text-brand hover:underline">
               Ver calendario
@@ -276,7 +277,7 @@ export default async function MiPanelPage({
           }
         >
           {myMeetings.length === 0 ? (
-            <EmptyState title="No tenes reuniones agendadas en los proximos 14 dias" />
+            <EmptyState title="No tenes reuniones agendadas en los próximos 14 días" />
           ) : (
             <ul className="divide-y divide-border">
               {myMeetings.map((m) => (
@@ -293,7 +294,7 @@ export default async function MiPanelPage({
                       m.meeting_outcome === "realizada" ? "ok" : m.meeting_outcome === "no_show" ? "risk" : "brand"
                     }
                   >
-                    {m.meeting_outcome}
+                    {MEETING_OUTCOME_LABEL[m.meeting_outcome] ?? m.meeting_outcome}
                   </Badge>
                 </li>
               ))}
@@ -306,7 +307,7 @@ export default async function MiPanelPage({
         {/* Mis oportunidades ----------------------------------------------- */}
         <Card
           title="Oportunidades a mi cargo"
-          subtitle="Ordenadas por proxima accion."
+          subtitle="Ordenadas por próxima acción."
           action={
             <Link href="/crm" className="text-xs text-brand hover:underline">
               Ver CRM
@@ -328,7 +329,7 @@ export default async function MiPanelPage({
                     <p className={`text-xs ${overdue ? "text-risk" : "text-faint"}`}>
                       {l.next_action
                         ? `${overdue ? "Vencida " : ""}${formatDate(l.next_action_date)} · ${l.next_action}`
-                        : "Sin proxima accion definida"}
+                        : "Sin próxima acción definida"}
                     </p>
                   </li>
                 );
@@ -339,7 +340,7 @@ export default async function MiPanelPage({
 
         {/* Alertas y bloqueos ---------------------------------------------- */}
         <Card
-          title="Lo que necesita atencion"
+          title="Lo que necesita atención"
           action={
             <Link href="/alertas" className="text-xs text-brand hover:underline">
               Ver todo
@@ -357,7 +358,7 @@ export default async function MiPanelPage({
                       {a.title}
                     </Link>
                     <Badge tone={a.severity === "urgente" ? "risk" : a.severity === "atencion" ? "warn" : "neutral"}>
-                      {a.severity}
+                      {SEVERITY_LABEL[a.severity]}
                     </Badge>
                   </div>
                   <p className="text-xs text-muted">{a.detail}</p>
@@ -415,8 +416,8 @@ export default async function MiPanelPage({
 
       {!can(user, "finanzas:ver") && (
         <p className="mt-6 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-          Este panel no incluye informacion financiera de la empresa (caja, margenes, costos de otras
-          personas ni rentabilidad). Si necesitas algo de eso para tu trabajo, pedilo a direccion.
+          Este panel no incluye información financiera de la empresa (caja, margenes, costos de otras
+          personas ni rentabilidad). Si necesitas algo de eso para tu trabajo, pedilo a dirección.
         </p>
       )}
     </>

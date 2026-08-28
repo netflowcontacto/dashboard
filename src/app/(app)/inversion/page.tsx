@@ -15,10 +15,10 @@ import CampaignAssetForm from "./CampaignAssetForm";
 export const dynamic = "force-dynamic";
 
 /**
- * Inversion publicitaria — vista de Paid Media.
+ * Inversión publicitaria — vista de Paid Media.
  *
- * Deja cargar inversion y creativos, y ver el rendimiento de la pauta,
- * SIN abrir ninguna otra categoria de gasto ni informacion financiera de la
+ * Deja cargar inversión y creativos, y ver el rendimiento de la pauta,
+ * SIN abrir ninguna otra categoría de gasto ni información financiera de la
  * empresa. Es el permiso 'paid_media:cargar', no 'finanzas:*'.
  */
 export default async function InversionPage({
@@ -30,7 +30,7 @@ export default async function InversionPage({
   if (!can(user, "paid_media:cargar")) {
     return (
       <>
-        <PageHeader title="Inversion publicitaria" />
+        <PageHeader title="Inversión publicitaria" />
         <EmptyState title="Esta vista es del area de Paid Media" />
       </>
     );
@@ -70,7 +70,7 @@ export default async function InversionPage({
   return (
     <>
       <PageHeader
-        title="Inversion publicitaria"
+        title="Inversión publicitaria"
         description="Carga de pauta y creativos. Es la misma fuente que alimenta el CPL y el CAC del funnel."
       >
         <RangePicker preset={range.preset} from={range.from} to={range.to} />
@@ -83,7 +83,7 @@ export default async function InversionPage({
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Card title="Cargar inversion">
+        <Card title="Cargar inversión">
           <ExpenseForm clients={clientsList()} today={todayISO()} onlyPaidMedia />
         </Card>
         <Card title="Registrar creativo o test">
@@ -92,9 +92,9 @@ export default async function InversionPage({
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Card title="Inversion del periodo">
+        <Card title="Inversión del período">
           {spend.length === 0 ? (
-            <EmptyState title="Sin inversion cargada en el periodo" />
+            <EmptyState title="Sin inversión cargada en el período" />
           ) : (
             <div className="scroll-x">
               <table className="nf">
@@ -103,7 +103,7 @@ export default async function InversionPage({
                     <th>Fecha</th>
                     <th>Concepto</th>
                     <th>Plataforma</th>
-                    <th>Campana</th>
+                    <th>Campaña</th>
                     <th className="text-right">Importe</th>
                   </tr>
                 </thead>
@@ -125,7 +125,7 @@ export default async function InversionPage({
 
         <Card title="Creativos y tests">
           {assets.length === 0 ? (
-            <EmptyState title="Sin creativos registrados en el periodo" />
+            <EmptyState title="Sin creativos registrados en el período" />
           ) : (
             <div className="scroll-x">
               <table className="nf">
@@ -134,7 +134,7 @@ export default async function InversionPage({
                     <th>Fecha</th>
                     <th>Nombre</th>
                     <th>Tipo</th>
-                    <th>Campana</th>
+                    <th>Campaña</th>
                     <th>Resultado</th>
                   </tr>
                 </thead>
@@ -143,7 +143,7 @@ export default async function InversionPage({
                     <tr key={a.id}>
                       <td className="text-muted">{formatDate(a.date)}</td>
                       <td className="font-medium">{a.name}</td>
-                      <td className="text-muted">{a.kind}</td>
+                      <td className="text-muted">{a.kind === "test" ? "Test" : "Creativo"}</td>
                       <td className="text-muted">{a.campaign || "—"}</td>
                       <td className="text-muted">{a.result || "—"}</td>
                     </tr>

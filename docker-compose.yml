@@ -1,0 +1,49 @@
+# Puesta en producción de NetFlow.
+#
+#   1. cp .env.example .env  y completar SESSION_SECRET
+#   2. docker compose up -d --build
+#   3. docker compose exec app node scripts/seed.mjs   (solo la primera vez)
+#
+# Los datos viven en el volumen `netflow-data`, no en el contenedor: se puede
+# reconstruir la imagen todas las veces que haga falta sin perder nada.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"   # solo local: el TLS lo termina el proxy de adelante
+    volumes:
+      - netflow-data:/data
+    environment:
+      DATABASE_PATH: /data/netflow.db
+      SESSION_SECRET: ${SESSION_SECRET:?falta SESSION_SECRET en .env}
+      INTEGRATIONS_INBOUND_TOKEN: ${INTEGRATIONS_INBOUND_TOKEN:-}
+      CALENDLY_WEBHOOK_SIGNING_KEY: ${CALENDLY_WEBHOOK_SIGNING_KEY:-}
+      TZ: America/Argentina/Buenos_Aires
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Respaldo diario de la base. La copia se hace con la API de backup de
+  # SQLite, que es segura con la app escribiendo al mismo tiempo.
+  backup:
+    build: .
+    restart: unless-stopped
+    entrypoint: ["node", "scripts/backup-loop.js"]
+    volumes:
+      - netflow-data:/data
+      - ./backups:/backups
+    environment:
+      DATABASE_PATH: /data/netflow.db
+      BACKUP_DIR: /backups
+      BACKUP_KEEP: "14"
+      TZ: America/Argentina/Buenos_Aires
+    depends_on:
+      - app
+
+volumes:
+  netflow-data:

@@ -3,22 +3,31 @@ import { requireAdmin } from "@/lib/auth";
 import { resolveRange, formatPeriod, formatDate, monthOf, todayISO } from "@/lib/dates";
 import { buildOverview } from "@/lib/metrics/overview";
 import { daysLeftInPeriod } from "@/lib/metrics/objectives";
+import { compareMetrics, metricHistory, previousRange, MONTH_SHORT } from "@/lib/metrics/compare";
+import { financeSummary, monthlyTrend } from "@/lib/metrics/finance";
 import { alertsFor } from "@/lib/alerts";
+import { setupStatus } from "@/lib/setup";
 import { formatMoney } from "@/lib/money";
 import { teamPerformance } from "@/lib/metrics/team";
 import {
-  Badge, Card, EmptyState, PageHeader, ProgressBar, StatCard, formatPct,
+  Badge, Card, EmptyState, HeroStat, Note, PageHeader, ProgressBar,
+  SectionTitle, StatCard, formatPct,
 } from "@/components/ui";
+import { BarList, ColumnsChart, type DeltaValue } from "@/components/charts";
 import RangePicker from "@/components/RangePicker";
+import SetupChecklist from "./SetupChecklist";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Resumen general (solo direccion).
+ * Resumen general (solo dirección).
  *
  * Ordenado para responder, de arriba hacia abajo, las tres preguntas del
- * dashboard: como esta NetFlow, donde esta el cuello de botella, y quien
- * tiene la proxima accion.
+ * dashboard: cómo está NetFlow, dónde está el cuello de botella, y quién
+ * tiene la próxima acción.
+ *
+ * La jerarquía es deliberada: una sola cifra protagonista arriba, después
+ * las tarjetas de apoyo. Si todo se ve igual de importante, nada lo es.
  */
 export default async function ResumenPage({
   searchParams,
@@ -33,60 +42,89 @@ export default async function ResumenPage({
     to: sp.to as string,
   });
 
+  const today = todayISO();
   const o = buildOverview(range);
   const f = o.finance;
-  const alerts = alertsFor(user).filter((a) => a.severity === "urgente").slice(0, 6);
+  const prev = previousRange(range);
+  const prevFinance = financeSummary(prev);
+  const alerts = alertsFor(user).filter((a) => a.severity === "urgente").slice(0, 5);
   const team = teamPerformance(range);
+  const setup = setupStatus();
   const cur = f.currency;
-  const daysLeft = daysLeftInPeriod(monthOf(todayISO()));
+  const daysLeft = daysLeftInPeriod(monthOf(today));
+
+  const cmp = compareMetrics(
+    ["clientes_nuevos", "clientes_activos", "leads_totales", "mrr_total", "ingresos_cobrados"],
+    range,
+  );
+
+  /** Delta de un importe financiero que no está en el registro de métricas. */
+  const moneyDelta = (current: number, previous: number, higherIsBetter = true): DeltaValue => ({
+    pct: previous === 0 ? null : ((current - previous) / Math.abs(previous)) * 100,
+    higherIsBetter,
+    vs: prev.label,
+  });
+
+  const toDelta = (key: string): DeltaValue | undefined => {
+    const c = cmp[key];
+    return c ? { pct: c.pct, higherIsBetter: c.higherIsBetter, vs: c.vs } : undefined;
+  };
+
+  const histClientes = metricHistory("clientes_activos", 6, range.to);
+  const histLeads = metricHistory("leads_totales", 6, range.to);
+  const histMrr = metricHistory("mrr_total", 6, range.to);
+
+  const trend = monthlyTrend(6, range.to);
+  const expensesByCat = o.funnel.investmentCents;
 
   return (
     <>
       <PageHeader
         title="Resumen general"
-        description={`Estado de NetFlow — ${range.label.toLowerCase()} (${formatDate(range.from)} a ${formatDate(range.to)}).`}
+        description={`${range.label} · ${formatDate(range.from)} a ${formatDate(range.to)}. Comparado contra ${prev.label}.`}
       >
         <RangePicker preset={range.preset} from={range.from} to={range.to} />
       </PageHeader>
 
-      {/* 1. Objetivo del mes ------------------------------------------------ */}
+      <SetupChecklist status={setup} />
+
+      {/* ── 1. ¿Cómo está NetFlow? Una sola cifra protagonista ────────────── */}
       <Card
-        className="mb-4"
+        className="mb-5"
         title={`Objetivo del mes — ${formatPeriod(o.period)}`}
         action={
-          <Link href="/objetivos" className="text-xs text-brand hover:underline">
+          <Link href="/objetivos" className="btn btn-ghost btn-sm text-brand-ink">
             Ver objetivos
           </Link>
         }
       >
         {o.headline ? (
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm text-muted">{o.headline.label}</p>
-              <p className="tnum mt-1 text-3xl font-semibold">
+          <HeroStat
+            label={o.headline.label}
+            value={
+              <>
                 {o.headline.current ?? 0}
-                <span className="text-lg font-normal text-faint"> / {o.headline.target}</span>
-              </p>
+                <span className="text-2xl font-normal text-faint"> / {o.headline.target}</span>
+              </>
+            }
+            delta={toDelta("clientes_nuevos")}
+            sub={`Faltan ${o.headline.missing ?? 0} · quedan ${daysLeft} día(s) del mes`}
+          >
+            <div className="mb-1.5 flex justify-between text-xs">
+              <span className={o.headline.onTrack ? "font-medium text-ok" : "font-medium text-risk"}>
+                {formatPct(o.headline.pct)} cumplido
+              </span>
+              <span className="text-faint">ritmo esperado {formatPct(o.headline.expectedPct)}</span>
             </div>
-            <div className="min-w-56 flex-1">
-              <div className="mb-1 flex justify-between text-xs">
-                <span className={o.headline.onTrack ? "text-ok" : "text-risk"}>
-                  {formatPct(o.headline.pct)} cumplido
-                </span>
-                <span className="text-faint">
-                  ritmo esperado {formatPct(o.headline.expectedPct)}
-                </span>
-              </div>
-              <ProgressBar pct={o.headline.pct} expectedPct={o.headline.expectedPct} size="lg" />
-              <p className="mt-1.5 text-xs text-muted">
-                Faltan {o.headline.missing ?? 0} · quedan {daysLeft} dia(s) del mes
-              </p>
-            </div>
-          </div>
+            <ProgressBar pct={o.headline.pct} expectedPct={o.headline.expectedPct} size="lg" />
+            <p className="mt-2 text-xs text-faint">
+              La marca vertical es el ritmo que correspondería a esta altura del mes.
+            </p>
+          </HeroStat>
         ) : (
           <EmptyState
-            title="Todavia no hay objetivo cargado para este mes"
-            detail="Sin objetivo no hay barra de progreso: el dashboard no inventa un numero."
+            title="Todavía no hay objetivo cargado para este mes"
+            detail="Sin objetivo no hay barra de progreso: el dashboard no inventa un número."
             action={
               <Link href="/objetivos" className="btn btn-primary">
                 Cargar objetivo
@@ -96,52 +134,40 @@ export default async function ResumenPage({
         )}
       </Card>
 
-      {/* 2. Como esta NetFlow ---------------------------------------------- */}
-      <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Clientes</h2>
+      <SectionTitle>Clientes e ingresos</SectionTitle>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Clientes activos" value={o.clients.active} href="/clientes" />
         <StatCard
-          label="Nuevos en el periodo"
-          value={o.clients.newInRange}
-          tone={o.clients.newInRange > 0 ? "ok" : "neutral"}
-          hint={o.clients.churnedInRange > 0 ? `${o.clients.churnedInRange} baja(s)` : "Sin bajas"}
-        />
-        <StatCard
-          label="Cuentas en atencion"
-          value={o.clients.byHealth.atencion}
-          tone={o.clients.byHealth.atencion > 0 ? "warn" : "neutral"}
+          label="Clientes activos"
+          value={o.clients.active}
           href="/clientes"
+          delta={toDelta("clientes_activos")}
+          spark={histClientes.map((h) => ({ label: h.label, value: h.value }))}
         />
-        <StatCard
-          label="Cuentas en riesgo"
-          value={o.clients.byHealth.riesgo}
-          tone={o.clients.byHealth.riesgo > 0 ? "risk" : "ok"}
-          href="/clientes"
-        />
-      </div>
-
-      <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Facturacion e ingresos</h2>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="MRR"
           value={formatMoney(f.mrrCents, cur)}
-          hint={`${f.activeClients} cliente(s) activo(s)`}
+          delta={moneyDelta(f.mrrCents, prevFinance.mrrCents)}
+          spark={histMrr.map((h) => ({ label: h.label, value: Math.round(h.value) }))}
         />
-        <StatCard label="Facturacion cobrada" value={formatMoney(f.collectedCents, cur)} tone="ok" />
         <StatCard
-          label="Facturacion pendiente"
+          label="Facturación cobrada"
+          value={formatMoney(f.collectedCents, cur)}
+          tone="ok"
+          delta={moneyDelta(f.collectedCents, prevFinance.collectedCents)}
+        />
+        <StatCard
+          label="Facturación pendiente"
           value={formatMoney(f.pendingCents, cur)}
           tone={f.pendingCents > 0 ? "warn" : "neutral"}
-          hint={o.clients.pendingPayment > 0 ? `${o.clients.pendingPayment} cliente(s) con cobro abierto` : undefined}
-        />
-        <StatCard
-          label="Nuevos ingresos (MRR nuevo)"
-          value={formatMoney(f.newMrrCents, cur)}
-          tone={f.newMrrCents > 0 ? "ok" : "neutral"}
+          hint={
+            o.clients.pendingPayment > 0
+              ? `${o.clients.pendingPayment} cliente(s) con cobro abierto`
+              : "Todos los cobros al día"
+          }
         />
       </div>
 
-      <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Caja y resultado</h2>
+      <SectionTitle>Caja y resultado</SectionTitle>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Caja disponible"
@@ -150,84 +176,124 @@ export default async function ResumenPage({
           hint={
             f.runwayMonths !== null
               ? `Runway ~${f.runwayMonths.toFixed(1)} meses`
-              : "Cargar gastos para estimar runway"
+              : "Cargá gastos para estimar el runway"
           }
         />
-        <StatCard label="Gastos del periodo" value={formatMoney(f.totalExpensesCents, cur)} href="/finanzas" />
         <StatCard
-          label="Resultado del periodo"
+          label="Gastos del período"
+          value={formatMoney(f.totalExpensesCents, cur)}
+          href="/finanzas"
+          delta={moneyDelta(f.totalExpensesCents, prevFinance.totalExpensesCents, false)}
+        />
+        <StatCard
+          label="Resultado del período"
           value={formatMoney(f.resultCents, cur)}
           tone={f.resultCents >= 0 ? "ok" : "risk"}
           hint="Facturado − costos directos − gastos operativos"
+          delta={moneyDelta(f.resultCents, prevFinance.resultCents)}
         />
         <StatCard
           label="Margen bruto"
           value={formatPct(f.grossMarginPct, 1)}
           tone={(f.grossMarginPct ?? 0) >= 60 ? "ok" : (f.grossMarginPct ?? 0) >= 35 ? "warn" : "risk"}
+          hint={`Margen neto ${formatPct(f.netMarginPct, 1)}`}
         />
       </div>
 
-      <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Eficiencia comercial</h2>
+      <SectionTitle>Eficiencia comercial</SectionTitle>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Leads del período"
+          value={o.funnel.cohort.leads}
+          href="/funnel"
+          delta={toDelta("leads_totales")}
+          spark={histLeads.map((h) => ({ label: h.label, value: h.value }))}
+        />
         <StatCard
           label="CAC"
           value={o.funnel.rates.cacCents !== null ? formatMoney(o.funnel.rates.cacCents, cur) : "—"}
           href="/funnel"
-          hint="Inversion del periodo / clientes cerrados"
-        />
-        <StatCard
-          label="Ticket promedio"
-          value={f.averageTicketCents !== null ? formatMoney(f.averageTicketCents, cur) : "—"}
+          hint="Inversión del período / clientes cerrados"
         />
         <StatCard
           label="CPL"
           value={o.funnel.rates.cplCents !== null ? formatMoney(o.funnel.rates.cplCents, cur) : "—"}
           href="/funnel"
+          hint={`Inversión ${formatMoney(expensesByCat, cur)}`}
         />
         <StatCard
-          label="Costo operativo por cliente"
-          value={
+          label="Ticket promedio"
+          value={f.averageTicketCents !== null ? formatMoney(f.averageTicketCents, cur) : "—"}
+          hint={`Costo operativo por cliente ${
             f.operatingCostPerClientCents !== null ? formatMoney(f.operatingCostPerClientCents, cur) : "—"
-          }
+          }`}
         />
       </div>
 
-      {/* 3. Donde esta el cuello de botella + quien tiene la proxima accion -- */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      {/* ── 2. ¿Dónde está el cuello de botella? ──────────────────────────── */}
+      <SectionTitle>Dónde está el cuello de botella</SectionTitle>
+      <div className="grid gap-4 lg:grid-cols-3">
         <Card
-          title="Cuello de botella"
-          subtitle="La conversion mas floja de la cadena en este periodo."
+          title="Conversión más floja"
+          subtitle="El paso del embudo que más está frenando el mes."
           action={
-            <Link href="/funnel" className="text-xs text-brand hover:underline">
+            <Link href="/funnel" className="btn btn-ghost btn-sm text-brand-ink">
               Ver funnel
             </Link>
           }
         >
           {o.bottleneck ? (
-            <div>
-              <p className="text-sm">
-                <span className="font-medium">{o.bottleneck.from}</span>
-                <span className="mx-2 text-faint">→</span>
-                <span className="font-medium">{o.bottleneck.to}</span>
+            <>
+              <p className="text-sm text-muted">
+                <span className="font-medium text-text">{o.bottleneck.from}</span>
+                <span className="mx-1.5 text-faint">→</span>
+                <span className="font-medium text-text">{o.bottleneck.to}</span>
               </p>
-              <p className="tnum mt-1 text-3xl font-semibold text-risk">
+              <p className="mt-1.5 text-4xl font-semibold leading-none text-risk">
                 {o.bottleneck.rate.toFixed(0)}%
               </p>
-              <p className="mt-1 text-xs text-muted">{o.bottleneck.detail} en el periodo.</p>
-            </div>
+              <p className="mt-2 text-xs text-muted">{o.bottleneck.detail} en el período.</p>
+            </>
           ) : (
             <EmptyState
               title="Sin datos suficientes"
-              detail="Hacen falta leads cargados en el periodo para detectar el cuello de botella."
+              detail="Hacen falta leads cargados en el período para detectar el cuello de botella."
             />
           )}
         </Card>
 
         <Card
-          title="Proximas acciones por responsable"
-          subtitle="Quien tiene que mover cada oportunidad abierta."
+          className="lg:col-span-2"
+          title="Embudo del período"
+          subtitle="Leads que ingresaron en el rango y hasta dónde llegaron."
+        >
+          {o.funnel.cohort.leads === 0 ? (
+            <EmptyState title="Sin leads en este período" />
+          ) : (
+            <BarList
+              rows={o.funnel.stages.map((s) => ({
+                key: s.key,
+                label: s.label,
+                value: s.value,
+                critical:
+                  o.bottleneck !== null &&
+                  s.label === o.bottleneck.to &&
+                  s.stepRate === o.bottleneck.rate,
+                hint: s.totalRate !== null && s.key !== "leads" ? `${s.totalRate.toFixed(0)}%` : undefined,
+              }))}
+              format={{ kind: "numero" }}
+            />
+          )}
+        </Card>
+      </div>
+
+      {/* ── 3. ¿Quién tiene la próxima acción? ────────────────────────────── */}
+      <SectionTitle>Quién tiene la próxima acción</SectionTitle>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card
+          title="Oportunidades abiertas por responsable"
           action={
-            <Link href="/crm" className="text-xs text-brand hover:underline">
+            <Link href="/crm" className="btn btn-ghost btn-sm text-brand-ink">
               Ver CRM
             </Link>
           }
@@ -242,7 +308,7 @@ export default async function ResumenPage({
                     <th>Responsable</th>
                     <th className="text-right">Vencidas</th>
                     <th className="text-right">Hoy</th>
-                    <th className="text-right">Proximas</th>
+                    <th className="text-right">Próximas</th>
                     <th className="text-right">Sin definir</th>
                   </tr>
                 </thead>
@@ -265,52 +331,62 @@ export default async function ResumenPage({
             </div>
           )}
         </Card>
+
+        <Card
+          title="Alertas urgentes"
+          action={
+            <Link href="/alertas" className="btn btn-ghost btn-sm text-brand-ink">
+              Ver todas
+            </Link>
+          }
+        >
+          {alerts.length === 0 ? (
+            <EmptyState title="Nada urgente" detail="No hay alertas críticas abiertas." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {alerts.map((a) => (
+                <li key={a.id} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <Link href={a.href} className="text-sm font-medium hover:underline">
+                      {a.title}
+                    </Link>
+                    <p className="mt-0.5 text-xs leading-snug text-muted">{a.detail}</p>
+                  </div>
+                  {a.ownerName && <Badge tone="neutral">{a.ownerName}</Badge>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       </div>
 
-      {/* Alertas urgentes --------------------------------------------------- */}
-      <Card
-        className="mt-4"
-        title="Alertas urgentes"
-        action={
-          <Link href="/alertas" className="text-xs text-brand hover:underline">
-            Ver todas
-          </Link>
-        }
-      >
-        {alerts.length === 0 ? (
-          <EmptyState title="Nada urgente" detail="No hay alertas criticas abiertas." />
-        ) : (
-          <ul className="divide-y divide-border">
-            {alerts.map((a) => (
-              <li key={a.id} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <Link href={a.href} className="text-sm font-medium hover:underline">
-                    {a.title}
-                  </Link>
-                  <p className="text-xs text-muted">{a.detail}</p>
-                </div>
-                {a.ownerName && <Badge tone="neutral">{a.ownerName}</Badge>}
-              </li>
-            ))}
-          </ul>
-        )}
+      <SectionTitle>Tendencia</SectionTitle>
+      <Card title="Facturado vs gastos" subtitle="Últimos 6 meses, consolidado en la moneda base.">
+        <ColumnsChart
+          labels={trend.map((t) => MONTH_SHORT[Number(t.period.slice(5, 7)) - 1])}
+          series={[
+            { key: "facturado", label: "Facturado", slot: 1, values: trend.map((t) => t.billedCents) },
+            { key: "gastos", label: "Gastos", slot: 2, values: trend.map((t) => t.expensesCents) },
+          ]}
+          format={{ kind: "moneda", currency: cur }}
+          height={170}
+        />
       </Card>
 
-      {/* Equipo — progreso contra objetivo, en orden fijo (no es un ranking) - */}
+      <SectionTitle>Progreso del equipo</SectionTitle>
       <Card
-        className="mt-4"
-        title="Progreso del equipo"
         subtitle="Cada persona contra su propio objetivo. El orden es fijo: no es una tabla de posiciones."
+        title="Cumplimiento individual"
         action={
-          <Link href="/equipo" className="text-xs text-brand hover:underline">
+          <Link href="/equipo" className="btn btn-ghost btn-sm text-brand-ink">
             Ver detalle
           </Link>
         }
       >
-        <ul className="space-y-3">
+        <ul className="space-y-3.5">
           {team.map((p) => (
             <li key={p.user.id}>
-              <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+              <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sm">
                 <span className="font-medium">
                   {p.user.name}
                   <span className="ml-2 text-xs font-normal text-faint">{p.user.job_title}</span>
@@ -328,6 +404,12 @@ export default async function ResumenPage({
           ))}
         </ul>
       </Card>
+
+      <Note>
+        Los porcentajes de conversión se calculan sobre los leads que ingresaron en el período
+        (cohorte), así nunca superan el 100%. Las comparaciones son contra {prev.label}: cuando no
+        hay base previa, el dashboard dice «sin base de comparación» en lugar de inventar un salto.
+      </Note>
     </>
   );
 }

@@ -7,13 +7,13 @@ import { todayISO } from "./dates";
  * Capa de integraciones.
  *
  * Criterio (V1): la arquitectura queda lista, pero NADA depende de ella.
- * Si una integracion no esta configurada, la carga sigue siendo manual y el
- * dashboard funciona igual. Nunca frenamos la primera version por automatizar.
+ * Si una integración no esta configurada, la carga sigue siendo manual y el
+ * dashboard funciona igual. Nunca frenamos la primera versión por automatizar.
  *
- * Como funciona el camino de entrada, unico para todas las fuentes:
+ * Como funciona el camino de entrada, único para todas las fuentes:
  *
  *   webhook  ->  se guarda el payload crudo en integration_events
- *            ->  se normaliza a una "reunion" o a un "lead"
+ *            ->  se normaliza a una "reunión" o a un "lead"
  *            ->  se aplica sobre el CRM (crear o actualizar)
  *
  * Guardar el crudo primero permite reprocesar sin pedirle nada al proveedor
@@ -51,7 +51,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     phase: "V2",
     description: "Webhook de reuniones agendadas, canceladas y no-show.",
     value:
-      "Prioridad de la V2: una reunion que agenda Max en Calendly se refleja sola en el CRM, sin cargarla dos veces.",
+      "Prioridad de la V2: una reunión que agenda Max en Calendly se refleja sola en el CRM, sin cargarla dos veces.",
     setup:
       "Crear un webhook en Calendly apuntando a /api/integrations/calendly con los eventos invitee.created e invitee.canceled, y guardar la signing key.",
     envVars: ["CALENDLY_WEBHOOK_SIGNING_KEY"],
@@ -61,17 +61,17 @@ export const INTEGRATIONS: IntegrationDef[] = [
     key: "google_calendar",
     name: "Google Calendar",
     phase: "V2",
-    description: "Sincronizacion de agenda del equipo.",
+    description: "Sincronización de agenda del equipo.",
     value: "El calendario del dashboard muestra la agenda real, no solo lo cargado a mano.",
-    setup: "Alta de credenciales OAuth en Google Cloud y autorizacion por persona.",
+    setup: "Alta de credenciales OAuth en Google Cloud y autorización por persona.",
     envVars: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
   },
   {
     key: "meta_ads",
     name: "Meta Ads",
     phase: "V3",
-    description: "Inversion, impresiones y leads por campana.",
-    value: "La inversion deja de cargarse a mano y el CPL se actualiza solo.",
+    description: "Inversión, impresiones y leads por campaña.",
+    value: "La inversión deja de cargarse a mano y el CPL se actualiza solo.",
     setup: "Token de sistema con permiso ads_read sobre la cuenta publicitaria.",
     envVars: ["META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID"],
   },
@@ -201,7 +201,7 @@ export interface InboundLead {
 /**
  * Aplica un lead entrante sobre el CRM.
  *
- * Si ya existe una oportunidad abierta con ese email o telefono, se actualiza
+ * Si ya existe una oportunidad abierta con ese email o teléfono, se actualiza
  * en lugar de duplicar: en una agencia chica los mismos contactos vuelven a
  * entrar por varios canales, y el CRM duplicado es lo que hace que se
  * abandone.
@@ -241,14 +241,14 @@ export function applyInboundLead(input: InboundLead): { leadId: number; created:
         `UPDATE leads SET meeting_at = ?, meeting_scheduled_at = COALESCE(meeting_scheduled_at, datetime('now')),
                           meeting_outcome = 'agendada',
                           stage = CASE WHEN stage IN ('nuevo','contactado','calificado') THEN 'reunion_agendada' ELSE stage END,
-                          next_action = 'Preparar la reunion',
+                          next_action = 'Preparar la reunión',
                           next_action_date = ?,
                           updated_at = datetime('now')
          WHERE id = ?`,
       ).run(input.meetingAt, input.meetingAt.slice(0, 10), existing.id);
     }
     db.prepare(
-      `INSERT INTO lead_events (lead_id, type, detail) VALUES (?, 'integracion', ?)`,
+      `INSERT INTO lead_events (lead_id, type, detail) VALUES (?, 'integración', ?)`,
     ).run(existing.id, `Actualizado desde ${input.source}`);
     return { leadId: existing.id, created: false };
   }
@@ -272,7 +272,7 @@ export function applyInboundLead(input: InboundLead): { leadId: number; created:
       defaultOwner.id,
       defaultOwner.id,
       input.meetingAt ? "reunion_agendada" : "nuevo",
-      input.meetingAt ? "Preparar la reunion" : "Primer contacto",
+      input.meetingAt ? "Preparar la reunión" : "Primer contacto",
       input.meetingAt ? input.meetingAt.slice(0, 10) : today,
       input.meetingAt ?? null,
       input.meetingAt ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
@@ -282,8 +282,8 @@ export function applyInboundLead(input: InboundLead): { leadId: number; created:
 
   const leadId = Number(info.lastInsertRowid);
   getDb()
-    .prepare(`INSERT INTO lead_events (lead_id, type, to_stage, detail) VALUES (?, 'integracion', ?, ?)`)
-    .run(leadId, input.meetingAt ? "reunion_agendada" : "nuevo", `Alta automatica desde ${input.source}`);
+    .prepare(`INSERT INTO lead_events (lead_id, type, to_stage, detail) VALUES (?, 'integración', ?, ?)`)
+    .run(leadId, input.meetingAt ? "reunion_agendada" : "nuevo", `Alta automática desde ${input.source}`);
 
   return { leadId, created: true };
 }

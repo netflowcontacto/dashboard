@@ -1,15 +1,15 @@
 import type { Currency } from "./types";
 
 /**
- * Utilidades de dinero PURAS: formateo, parseo y conversion con un tipo de
- * cambio explicito. Este modulo no toca la base de datos a proposito, para
- * poder usarlo tambien desde componentes de cliente.
+ * Utilidades de dinero PURAS: formateo, parseo y conversión con un tipo de
+ * cambio explicito. Este modulo no toca la base de datos a propósito, para
+ * poder usarlo también desde componentes de cliente.
  *
  * El tipo de cambio y la moneda base configurados viven en `@/lib/fx`
  * (solo servidor, lee de settings).
  *
  * Regla de oro: el valor original NUNCA se pisa. Se guarda siempre
- * (importe en centavos + moneda) y la consolidacion se hace al mostrar.
+ * (importe en centavos + moneda) y la consolidación se hace al mostrar.
  */
 
 export interface Money {

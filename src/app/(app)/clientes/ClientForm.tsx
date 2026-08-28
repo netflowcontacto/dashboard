@@ -16,7 +16,7 @@ function Submit({ label }: { label: string }) {
   );
 }
 
-/** Ficha completa: solo direccion (incluye fee y estado de cobro). */
+/** Ficha completa: solo dirección (incluye fee y estado de cobro). */
 export default function ClientForm({
   client,
   users,
@@ -73,12 +73,12 @@ export default function ClientForm({
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">Cobro</legend>
-        <Field label="Proximo cobro">
+        <Field label="Próximo cobro">
           <input className="field" type="date" name="next_charge_date" defaultValue={client?.next_charge_date ?? ""} />
         </Field>
         <Field label="Estado de pago">
           <select className="field" name="payment_status" defaultValue={client?.payment_status ?? "al_dia"}>
-            <option value="al_dia">Al dia</option>
+            <option value="al_dia">Al día</option>
             <option value="pendiente">Pendiente</option>
             <option value="vencido">Vencido</option>
           </select>
@@ -89,7 +89,7 @@ export default function ClientForm({
       </fieldset>
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">Operacion</legend>
+        <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">Operación</legend>
         <Field label="Responsable Paid Media">
           <select className="field" name="paid_media_owner_id" defaultValue={client?.paid_media_owner_id ?? ""}>
             <option value="">—</option>
@@ -120,7 +120,7 @@ export default function ClientForm({
         <Field label="Estado general (semaforo)">
           <select className="field" name="account_health" defaultValue={client?.account_health ?? "bien"}>
             <option value="bien">Bien</option>
-            <option value="atencion">Atencion</option>
+            <option value="atencion">Atención</option>
             <option value="riesgo">Riesgo</option>
           </select>
         </Field>
@@ -158,7 +158,7 @@ export default function ClientForm({
   );
 }
 
-/** Version reducida para el equipo: semaforo + onboarding, sin numeros. */
+/** Versión reducida para el equipo: semaforo + onboarding, sin números. */
 export function AccountHealthForm({ client }: { client: Client }) {
   return (
     <form action={setAccountHealth} className="space-y-3">
@@ -166,7 +166,7 @@ export function AccountHealthForm({ client }: { client: Client }) {
       <Field label="Estado general">
         <select className="field" name="account_health" defaultValue={client.account_health}>
           <option value="bien">Bien</option>
-          <option value="atencion">Atencion</option>
+          <option value="atencion">Atención</option>
           <option value="riesgo">Riesgo</option>
         </select>
       </Field>

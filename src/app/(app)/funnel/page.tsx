@@ -3,7 +3,9 @@ import { resolveRange, formatDate } from "@/lib/dates";
 import { computeFunnel, leadsBySource } from "@/lib/metrics/funnel";
 import { findBottleneck } from "@/lib/metrics/overview";
 import { formatMoney } from "@/lib/money";
-import { Card, EmptyState, PageHeader, StatCard, formatPct } from "@/components/ui";
+import { compareMetrics, previousRange } from "@/lib/metrics/compare";
+import { Card, EmptyState, Note, PageHeader, SectionTitle, StatCard, formatPct } from "@/components/ui";
+import { BarList, FunnelChart, type DeltaValue } from "@/components/charts";
 import RangePicker from "@/components/RangePicker";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +15,8 @@ export const dynamic = "force-dynamic";
  * Reuniones agendadas -> Reuniones realizadas -> Propuestas -> Clientes.
  *
  * Las conversiones se miden por COHORTE (leads que ingresaron en el rango),
- * que es la unica forma de que los porcentajes cierren. La actividad del
- * periodo se muestra aparte y etiquetada, para no mezclar las dos lecturas.
+ * que es la única forma de que los porcentajes cierren. La actividad del
+ * período se muestra aparte y etiquetada, para no mezclar las dos lecturas.
  */
 export default async function FunnelPage({
   searchParams,
@@ -33,35 +35,46 @@ export default async function FunnelPage({
   const sources = leadsBySource(range);
   const bottleneck = findBottleneck(f);
   const cur = f.currency;
-  const maxValue = Math.max(...f.stages.map((s) => s.value), 1);
+  const prev = previousRange(range);
+  const cmp = compareMetrics(["leads_totales", "cpl", "inversion"], range);
+  const toDelta = (key: string): DeltaValue | undefined => {
+    const c = cmp[key];
+    return c ? { pct: c.pct, higherIsBetter: c.higherIsBetter, vs: c.vs } : undefined;
+  };
 
   return (
     <>
       <PageHeader
         title="Funnel comercial"
-        description={`${formatDate(range.from)} a ${formatDate(range.to)}. Las conversiones se calculan sobre los leads que ingresaron en el periodo.`}
+        description={`${formatDate(range.from)} a ${formatDate(range.to)}. Las conversiones se calculan sobre los leads que ingresaron en el período. Comparado contra ${prev.label}.`}
       >
         <RangePicker preset={range.preset} from={range.from} to={range.to} />
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Inversion publicitaria" value={formatMoney(f.investmentCents, cur)} />
-        <StatCard label="Leads" value={f.cohort.leads} />
+        <StatCard
+          label="Inversión publicitaria"
+          value={formatMoney(f.investmentCents, cur)}
+          delta={toDelta("inversion")}
+        />
+        <StatCard label="Leads" value={f.cohort.leads} delta={toDelta("leads_totales")} />
         <StatCard
           label="CPL"
           value={f.rates.cplCents !== null ? formatMoney(f.rates.cplCents, cur) : "—"}
+          delta={toDelta("cpl")}
+          hint="Menos es mejor"
         />
         <StatCard
           label="CAC"
           value={f.rates.cacCents !== null ? formatMoney(f.rates.cacCents, cur) : "—"}
-          hint="Inversion / clientes cerrados en el periodo"
+          hint="Inversión / clientes cerrados en el período"
         />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="% de contacto" value={formatPct(f.rates.contacto)} />
-        <StatCard label="% de calificacion" value={formatPct(f.rates.calificacion)} />
-        <StatCard label="Lead → reunion" value={formatPct(f.rates.leadAReunion)} />
+        <StatCard label="% de calificación" value={formatPct(f.rates.calificación)} />
+        <StatCard label="Lead → reunión" value={formatPct(f.rates.leadAReunion)} />
         <StatCard
           label="Show rate"
           value={formatPct(f.rates.showRate)}
@@ -70,8 +83,8 @@ export default async function FunnelPage({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Reunion → propuesta" value={formatPct(f.rates.reunionAPropuesta)} />
-        <StatCard label="Reunion → cliente" value={formatPct(f.rates.reunionACliente)} />
+        <StatCard label="Reunión → propuesta" value={formatPct(f.rates.reunionAPropuesta)} />
+        <StatCard label="Reunión → cliente" value={formatPct(f.rates.reunionACliente)} />
         <StatCard label="Revenue generado (MRR nuevo)" value={formatMoney(f.revenueCents, cur)} tone="ok" />
         <StatCard label="Clientes cerrados" value={f.cohort.clientes} tone="ok" />
       </div>
@@ -79,60 +92,41 @@ export default async function FunnelPage({
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card
           className="lg:col-span-2"
-          title="Cadena de conversion"
-          subtitle="Cohorte: leads que ingresaron en el periodo y hasta donde llegaron."
+          title="Cadena de conversión"
+          subtitle="Cohorte: leads que ingresaron en el período y hasta dónde llegaron."
         >
           {f.cohort.leads === 0 ? (
             <EmptyState
-              title="Sin leads en este periodo"
-              detail="Carga oportunidades en el CRM o ampliá el rango de fechas."
+              title="Sin leads en este período"
+              detail="Cargá oportunidades en el CRM o ampliá el rango de fechas."
             />
           ) : (
-            <ul className="space-y-2.5">
-              {f.stages.map((s, i) => {
-                const isBottleneck =
-                  bottleneck !== null && i > 0 && f.stages[i - 1].label === bottleneck.from && s.label === bottleneck.to;
-                return (
-                  <li key={s.key}>
-                    <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-                      <span className="font-medium">{s.label}</span>
-                      <span className="tnum text-xs text-muted">
-                        {s.value}
-                        {s.stepRate !== null && (
-                          <span className={isBottleneck ? "ml-2 font-semibold text-risk" : "ml-2 text-faint"}>
-                            {s.stepRate.toFixed(0)}% del paso anterior
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="h-6 w-full overflow-hidden rounded-md bg-surface-2">
-                      <div
-                        className="flex h-6 items-center rounded-md px-2 text-xs font-medium text-white transition-[width] duration-500"
-                        style={{
-                          width: `${Math.max(2, (s.value / maxValue) * 100)}%`,
-                          background: isBottleneck ? "var(--risk)" : "var(--brand)",
-                        }}
-                      >
-                        {s.totalRate !== null && s.value / maxValue > 0.18 && (
-                          <span className="tnum">{s.totalRate.toFixed(0)}%</span>
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <FunnelChart
+              stages={f.stages.map((s, i) => ({
+                key: s.key,
+                label: s.label,
+                value: s.value,
+                stepRate: s.stepRate,
+                totalRate: s.totalRate,
+                isBottleneck:
+                  bottleneck !== null &&
+                  i > 0 &&
+                  f.stages[i - 1].label === bottleneck.from &&
+                  s.label === bottleneck.to,
+              }))}
+            />
           )}
           {bottleneck && (
-            <p className="mt-4 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-              <strong className="text-text">Cuello de botella:</strong> {bottleneck.from} → {bottleneck.to} (
-              {bottleneck.rate.toFixed(0)}%, {bottleneck.detail}).
+            <p className="mt-4 rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
+              <strong className="text-text">Cuello de botella:</strong> {bottleneck.from} →{" "}
+              {bottleneck.to} ({bottleneck.rate.toFixed(0)}%, {bottleneck.detail}). Es el paso donde
+              más se pierde: mover esa conversión es lo que más mueve el mes.
             </p>
           )}
         </Card>
 
         <div className="space-y-4">
-          <Card title="Actividad del periodo" subtitle="Que paso en estas fechas, sin importar cuando entro el lead.">
+          <Card title="Actividad del período" subtitle="Qué pasó en estas fechas, sin importar cuándo entró el lead.">
             <dl className="space-y-2 text-sm">
               {[
                 ["Reuniones agendadas", f.activity.reunionesAgendadas],
@@ -149,32 +143,29 @@ export default async function FunnelPage({
             </dl>
           </Card>
 
-          <Card title="Origen de los leads">
+          <Card title="Origen de los leads" subtitle="De dónde viene el volumen real.">
             {sources.length === 0 ? (
               <EmptyState title="Sin datos" />
             ) : (
-              <table className="nf">
-                <thead>
-                  <tr>
-                    <th>Origen</th>
-                    <th className="text-right">Leads</th>
-                    <th className="text-right">Cierres</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sources.map((s) => (
-                    <tr key={s.source}>
-                      <td>{s.source}</td>
-                      <td className="tnum text-right">{s.leads}</td>
-                      <td className="tnum text-right">{s.clientes}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <BarList
+                rows={sources.map((src) => ({
+                  key: src.source,
+                  label: src.source.replace(/_/g, " "),
+                  value: src.leads,
+                  hint: src.clientes > 0 ? `${src.clientes} cierre(s)` : undefined,
+                }))}
+                format={{ kind: "numero" }}
+              />
             )}
           </Card>
         </div>
       </div>
+      <Note>
+        La <strong>cadena de conversión</strong> mide la cohorte que ingresó en el rango, por eso
+        los porcentajes nunca pasan del 100%. La <strong>actividad del período</strong> cuenta lo
+        que pasó en estas fechas sin importar cuándo entró el lead. Son dos lecturas distintas a
+        propósito: mezclarlas es lo que hace que un funnel muestre «120% de contacto».
+      </Note>
     </>
   );
 }

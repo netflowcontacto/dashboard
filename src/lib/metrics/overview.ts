@@ -7,11 +7,11 @@ import { headlineObjective, type ObjectiveProgress } from "./objectives";
 import type { Health } from "../types";
 
 /**
- * Resumen general de direccion. Responde en 2 minutos las tres preguntas
+ * Resumen general de dirección. Responde en 2 minutos las tres preguntas
  * que el dashboard tiene que responder:
  *   1. Como esta NetFlow      -> headline + finanzas + clientes
  *   2. Donde esta el cuello    -> bottleneck (etapa del funnel mas floja)
- *   3. Quien tiene la proxima  -> nextActions
+ *   3. Quien tiene la próxima  -> nextActions
  */
 
 export interface Bottleneck {
@@ -44,7 +44,7 @@ export interface OverviewData {
   }[];
 }
 
-/** La conversion mas floja de la cadena, en puntos porcentuales. */
+/** La conversión mas floja de la cadena, en puntos porcentuales. */
 export function findBottleneck(funnel: FunnelResult): Bottleneck | null {
   const steps = funnel.stages
     .map((s, i) => ({ s, prev: funnel.stages[i - 1] }))

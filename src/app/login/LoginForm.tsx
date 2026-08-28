@@ -30,7 +30,7 @@ export default function LoginForm() {
           autoFocus
         />
       </Field>
-      <Field label="Contrasena" required>
+      <Field label="Contraseña" required>
         <input className="field" type="password" name="password" autoComplete="current-password" required />
       </Field>
       <SubmitButton />

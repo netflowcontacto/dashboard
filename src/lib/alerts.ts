@@ -68,7 +68,7 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
     });
   }
 
-  // --- Lead abierto sin proxima accion (la base ya lo impide, esto detecta datos viejos) ---
+  // --- Lead abierto sin próxima acción (la base ya lo impide, esto detecta datos viejos) ---
   const noNextAction = db
     .prepare(
       `SELECT l.id, l.name, l.owner_id, u.name AS owner_name
@@ -84,15 +84,15 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
       kind: "lead_sin_proxima_accion",
       severity: "urgente",
       visibility: "todos",
-      title: `Sin proxima accion: ${l.name}`,
-      detail: "Toda oportunidad abierta tiene que tener proxima accion y fecha.",
+      title: `Sin próxima acción: ${l.name}`,
+      detail: "Toda oportunidad abierta tiene que tener próxima acción y fecha.",
       href: `/crm/${l.id}`,
       ownerId: l.owner_id,
       ownerName: l.owner_name,
     });
   }
 
-  // --- Proxima accion vencida ---
+  // --- Próxima acción vencida ---
   const overdue = db
     .prepare(
       `SELECT l.id, l.name, l.next_action, l.next_action_date, l.owner_id, u.name AS owner_name
@@ -111,15 +111,15 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
       kind: "accion_vencida",
       severity: "atencion",
       visibility: "todos",
-      title: `Accion vencida: ${l.name}`,
-      detail: `"${l.next_action}" vencia el ${l.next_action_date}.`,
+      title: `Acción vencida: ${l.name}`,
+      detail: `"${l.next_action}" vencía el ${l.next_action_date}.`,
       href: `/crm/${l.id}`,
       ownerId: l.owner_id,
       ownerName: l.owner_name,
     });
   }
 
-  // --- Reunion proxima (48 h) ---
+  // --- Reunión próxima (48 h) ---
   const upcoming = db
     .prepare(
       `SELECT l.id, l.name, l.meeting_at, l.closer_id, u.name AS owner_name
@@ -137,7 +137,7 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
       kind: "reunion_proxima",
       severity: "info",
       visibility: "todos",
-      title: `Reunion proxima: ${l.name}`,
+      title: `Reunión próxima: ${l.name}`,
       detail: `Agendada para ${l.meeting_at.replace("T", " ").slice(0, 16)}.`,
       href: `/crm/${l.id}`,
       ownerId: l.closer_id,
@@ -214,7 +214,7 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
       severity: c.payment_status === "vencido" ? "urgente" : "atencion",
       visibility: "solo_admin",
       title: `Cobro ${c.payment_status}: ${c.name}`,
-      detail: c.next_charge_date ? `Proximo cobro: ${c.next_charge_date}.` : "Sin fecha de proximo cobro.",
+      detail: c.next_charge_date ? `Próximo cobro: ${c.next_charge_date}.` : "Sin fecha de próximo cobro.",
       href: `/clientes/${c.id}`,
       ownerId: null,
       ownerName: null,
@@ -283,7 +283,7 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
       severity: "atencion",
       visibility: "todos",
       title: `Tarea vencida: ${t.title}`,
-      detail: `Vencia el ${t.due_date}.`,
+      detail: `Vencía el ${t.due_date}.`,
       href: "/tareas",
       ownerId: t.assignee_id,
       ownerName: t.owner_name,
@@ -334,7 +334,7 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
     }
   }
 
-  // --- Campana sin resultado: inversion sin leads ---
+  // --- Campaña sin resultado: inversión sin leads ---
   const badCampaigns = db
     .prepare(
       `SELECT campaign, SUM(amount_cents) AS cents FROM expenses
@@ -353,8 +353,8 @@ export function computeAlerts(asOf = todayISO()): Alert[] {
         kind: "campana_con_problema",
         severity: "urgente",
         visibility: "todos",
-        title: "Inversion publicitaria sin leads",
-        detail: "Hubo inversion en los ultimos 7 dias y no ingreso ningun lead.",
+        title: "Inversión publicitaria sin leads",
+        detail: "Hubo inversión en los últimos 7 días y no ingreso ningún lead.",
         href: "/funnel",
         ownerId: null,
         ownerName: null,
@@ -387,6 +387,6 @@ export function alertsFor(user: User, asOf = todayISO()): Alert[] {
 
 export const SEVERITY_LABEL: Record<AlertSeverity, string> = {
   urgente: "Urgente",
-  atencion: "Atencion",
+  atencion: "Atención",
   info: "Info",
 };

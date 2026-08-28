@@ -8,6 +8,7 @@ import { formatDate, todayISO } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { Badge, Card, EmptyState, PageHeader, Semaforo } from "@/components/ui";
 import ClientForm, { AccountHealthForm } from "../ClientForm";
+import { PAYMENT_STATUS_LABEL, INVOICE_STATUS_LABEL, TASK_CATEGORY_LABEL, TASK_STATUS_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
         {verFees && <Badge tone="brand">{formatMoney(client.fee_cents, client.fee_currency)} / mes</Badge>}
         {verFees && (
           <Badge tone={client.payment_status === "al_dia" ? "ok" : client.payment_status === "pendiente" ? "warn" : "risk"}>
-            Pago {client.payment_status.replace("_", " ")}
+            Pago: {PAYMENT_STATUS_LABEL[client.payment_status] ?? client.payment_status}
           </Badge>
         )}
         {client.churned_at && <Badge tone="risk">Baja {formatDate(client.churned_at)}</Badge>}
@@ -69,8 +70,8 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
             ) : (
               <>
                 <p className="mb-4 text-sm text-muted">
-                  Podes actualizar el estado operativo de la cuenta. La informacion comercial y de cobro la
-                  gestiona direccion.
+                  Podes actualizar el estado operativo de la cuenta. La información comercial y de cobro la
+                  gestiona dirección.
                 </p>
                 <AccountHealthForm client={client} />
               </>
@@ -80,14 +81,14 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
 
         <div className="space-y-4">
           {verFees && (
-            <Card title="Ultimas facturas">
+            <Card title="Últimas facturas">
               {invoices.length === 0 ? (
                 <EmptyState title="Sin facturas cargadas" />
               ) : (
                 <table className="nf">
                   <thead>
                     <tr>
-                      <th>Periodo</th>
+                      <th>Período</th>
                       <th className="text-right">Importe</th>
                       <th>Estado</th>
                     </tr>
@@ -99,7 +100,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
                         <td className="tnum text-right">{formatMoney(i.amount_cents, i.currency)}</td>
                         <td>
                           <Badge tone={i.status === "cobrada" ? "ok" : i.status === "pendiente" ? "warn" : "risk"}>
-                            {i.status}
+                            {INVOICE_STATUS_LABEL[i.status] ?? i.status}
                           </Badge>
                         </td>
                       </tr>
@@ -120,12 +121,12 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
                     <div>
                       <p className="text-sm">{t.title}</p>
                       <p className="text-xs text-faint">
-                        {t.category}
+                        {TASK_CATEGORY_LABEL[t.category] ?? t.category}
                         {t.due_date ? ` · vence ${formatDate(t.due_date)}` : ""}
                       </p>
                     </div>
                     <Badge tone={t.status === "hecho" ? "ok" : t.status === "bloqueado" ? "risk" : "neutral"}>
-                      {t.status}
+                      {TASK_STATUS_LABEL[t.status] ?? t.status}
                     </Badge>
                   </li>
                 ))}

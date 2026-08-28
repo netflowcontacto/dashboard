@@ -16,7 +16,7 @@ export default async function NuevaOportunidadPage() {
 
   return (
     <>
-      <PageHeader title="Nueva oportunidad" description="Toda oportunidad nace con responsable y proxima accion.">
+      <PageHeader title="Nueva oportunidad" description="Toda oportunidad nace con responsable y próxima acción.">
         <Link href="/crm" className="btn">
           Volver al CRM
         </Link>

@@ -2,7 +2,7 @@ import "server-only";
 import { getDb } from "./db";
 import type { Client, Lead, User } from "./types";
 
-/** Consultas de lectura compartidas entre paginas. */
+/** Consultas de lectura compartidas entre páginas. */
 
 export function usersList(): User[] {
   return getDb()

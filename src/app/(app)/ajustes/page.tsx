@@ -15,7 +15,7 @@ export default async function AjustesPage() {
     <>
       <PageHeader
         title="Ajustes"
-        description="Moneda, reglas operativas y accesos. Solo direccion."
+        description="Moneda, reglas operativas y accesos. Solo dirección."
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -37,18 +37,18 @@ export default async function AjustesPage() {
 
       <Card
         className="mt-4"
-        title="Metricas disponibles"
+        title="Métricas disponibles"
         subtitle="Cada una se puede usar como objetivo. El resultado se calcula solo, nunca se carga a mano."
       >
         <div className="scroll-x">
           <table className="nf">
             <thead>
               <tr>
-                <th>Metrica</th>
+                <th>Métrica</th>
                 <th>Clave</th>
                 <th>Ambito</th>
                 <th>Unidad</th>
-                <th>Direccion</th>
+                <th>Dirección</th>
               </tr>
             </thead>
             <tbody>

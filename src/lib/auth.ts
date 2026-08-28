@@ -12,14 +12,14 @@ export function verifyPassword(plain: string, hash: string): boolean {
   return bcrypt.compareSync(plain, hash);
 }
 
-/** Exige sesion. Usar al tope de toda pagina o server action. */
+/** Exige sesión. Usar al tope de toda página o server action. */
 export async function requireUser(): Promise<User> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   return user;
 }
 
-/** Exige rol admin. Es la unica puerta a la informacion financiera sensible. */
+/** Exige rol admin. Es la única puerta a la información financiera sensible. */
 export async function requireAdmin(): Promise<User> {
   const user = await requireUser();
   if (user.role !== "admin") redirect("/mi-panel?sin_acceso=1");

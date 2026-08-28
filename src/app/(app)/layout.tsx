@@ -6,9 +6,9 @@ import Nav, { type NavItem } from "@/components/Nav";
 /**
  * Shell de la aplicacion.
  *
- * La navegacion se arma en el servidor a partir de los permisos: una persona
+ * La navegación se arma en el servidor a partir de los permisos: una persona
  * del equipo ni siquiera recibe el link a Finanzas. De todas formas cada
- * pagina sensible vuelve a validar con requireAdmin(): ocultar el link no es
+ * página sensible vuelve a validar con requireAdmin(): ocultar el link no es
  * un control de acceso.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -19,31 +19,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const items: NavItem[] = [];
 
   if (admin) {
-    items.push({ href: "/resumen", label: "Resumen general", group: "Direccion" });
-    items.push({ href: "/funnel", label: "Funnel comercial", group: "Direccion" });
+    items.push({ href: "/resumen", label: "Resumen general", group: "Dirección" });
+    items.push({ href: "/funnel", label: "Funnel comercial", group: "Dirección" });
   }
-  items.push({ href: "/mi-panel", label: "Mi panel", group: admin ? "Direccion" : "Mi trabajo" });
+  items.push({ href: "/mi-panel", label: "Mi panel", group: admin ? "Dirección" : "Mi trabajo" });
 
   items.push({ href: "/crm", label: "CRM", group: "Comercial" });
   items.push({ href: "/clientes", label: "Clientes", group: "Comercial" });
 
-  items.push({ href: "/objetivos", label: "Objetivos", group: "Operacion" });
-  items.push({ href: "/tareas", label: "Tareas y proyectos", group: "Operacion" });
-  items.push({ href: "/calendario", label: "Calendario", group: "Operacion" });
-  items.push({ href: "/alertas", label: "Alertas", group: "Operacion" });
+  items.push({ href: "/objetivos", label: "Objetivos", group: "Operación" });
+  items.push({ href: "/tareas", label: "Tareas y proyectos", group: "Operación" });
+  items.push({ href: "/calendario", label: "Calendario", group: "Operación" });
+  items.push({ href: "/alertas", label: "Alertas", group: "Operación" });
 
   if (can(user, "paid_media:cargar")) {
-    items.push({ href: "/inversion", label: "Inversion publicitaria", group: "Comercial" });
+    items.push({ href: "/inversion", label: "Inversión publicitaria", group: "Comercial" });
   }
   if (can(user, "equipo:ver_todos")) {
-    items.push({ href: "/equipo", label: "Equipo y performance", group: "Operacion" });
+    items.push({ href: "/equipo", label: "Equipo y performance", group: "Operación" });
   }
   if (can(user, "finanzas:ver")) {
-    items.push({ href: "/finanzas", label: "Finanzas", group: "Administracion" });
+    items.push({ href: "/finanzas", label: "Finanzas", group: "Administración" });
   }
   if (can(user, "ajustes:gestionar")) {
-    items.push({ href: "/ajustes", label: "Ajustes", group: "Administracion" });
-    items.push({ href: "/integraciones", label: "Integraciones", group: "Administracion" });
+    items.push({ href: "/ajustes", label: "Ajustes", group: "Administración" });
+    items.push({ href: "/integraciones", label: "Integraciones", group: "Administración" });
   }
 
   return (

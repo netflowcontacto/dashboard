@@ -6,9 +6,13 @@ import { formatMoney } from "@/lib/money";
 import { fxRate, baseCurrency } from "@/lib/fx";
 import { clientsList } from "@/lib/queries";
 import { EXPENSE_CATEGORY_LABEL, type Currency, type ExpenseCategory } from "@/lib/types";
-import { Badge, Card, EmptyState, PageHeader, StatCard, formatPct } from "@/components/ui";
+import { previousRange, MONTH_SHORT } from "@/lib/metrics/compare";
+import { Badge, Card, EmptyState, Note, PageHeader, SectionTitle, StatCard, formatPct } from "@/components/ui";
+import { BarList, ColumnsChart, type DeltaValue } from "@/components/charts";
 import RangePicker from "@/components/RangePicker";
+import ExportButton from "@/components/ExportButton";
 import ExpenseForm, { CashForm } from "./ExpenseForm";
+import { COST_TYPE_LABEL, EXPENSE_STATUS_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +39,13 @@ export default async function FinanzasPage({
   const trend = monthlyTrend(6, range.to);
   const cur = f.currency;
   const today = todayISO();
+  const prev = previousRange(range);
+  const prevFinance = financeSummary(prev);
+  const moneyDelta = (current: number, previous: number, higherIsBetter = true): DeltaValue => ({
+    pct: previous === 0 ? null : ((current - previous) / Math.abs(previous)) * 100,
+    higherIsBetter,
+    vs: prev.label,
+  });
 
   const expenses = getDb()
     .prepare(
@@ -48,20 +59,27 @@ export default async function FinanzasPage({
       client_name: string | null; direct_cost: number;
     }[];
 
-  const maxTrend = Math.max(...trend.flatMap((t) => [t.billedCents, t.expensesCents]), 1);
-
-  return (
+    return (
     <>
       <PageHeader
         title="Finanzas"
-        description={`Informacion sensible: visible unicamente para direccion. Consolidado en ${cur} al tipo de cambio de referencia (1 USD = ${fxRate()} ARS).`}
+        description={`Información sensible: visible únicamente para dirección. Consolidado en ${cur} al tipo de cambio de referencia (1 USD = ${fxRate()} ARS).`}
       >
         <RangePicker preset={range.preset} from={range.from} to={range.to} />
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Facturado" value={formatMoney(f.billedCents, cur)} />
-        <StatCard label="Cobrado" value={formatMoney(f.collectedCents, cur)} tone="ok" />
+        <StatCard
+          label="Facturado"
+          value={formatMoney(f.billedCents, cur)}
+          delta={moneyDelta(f.billedCents, prevFinance.billedCents)}
+        />
+        <StatCard
+          label="Cobrado"
+          value={formatMoney(f.collectedCents, cur)}
+          tone="ok"
+          delta={moneyDelta(f.collectedCents, prevFinance.collectedCents)}
+        />
         <StatCard
           label="Pendiente de cobro"
           value={formatMoney(f.pendingCents, cur)}
@@ -72,6 +90,7 @@ export default async function FinanzasPage({
           value={formatMoney(f.resultCents, cur)}
           tone={f.resultCents >= 0 ? "ok" : "risk"}
           hint="Facturado − costos directos − gastos operativos"
+          delta={moneyDelta(f.resultCents, prevFinance.resultCents)}
         />
       </div>
 
@@ -110,59 +129,39 @@ export default async function FinanzasPage({
           value={f.operatingCostPerClientCents !== null ? formatMoney(f.operatingCostPerClientCents, cur) : "—"}
         />
         <StatCard
-          label="Gastos impagos del periodo"
+          label="Gastos impagos del período"
           value={formatMoney(f.unpaidExpensesCents, cur)}
           tone={f.unpaidExpensesCents > 0 ? "warn" : "neutral"}
         />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Card title="Gastos por categoria" subtitle="Donde se va la plata en este periodo.">
+        <Card title="Gastos por categoría" subtitle="Dónde se va la plata en este período.">
           {byCategory.length === 0 ? (
-            <EmptyState title="Sin gastos cargados en el periodo" />
+            <EmptyState title="Sin gastos cargados en el período" />
           ) : (
-            <ul className="space-y-2">
-              {byCategory.map((c) => (
-                <li key={c.category}>
-                  <div className="mb-1 flex justify-between text-sm">
-                    <span>{EXPENSE_CATEGORY_LABEL[c.category as ExpenseCategory] ?? c.category}</span>
-                    <span className="tnum text-muted">
-                      {formatMoney(c.totalCents, cur)}{" "}
-                      <span className="text-faint">({c.pctOfTotal.toFixed(0)}%)</span>
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                    <div className="h-1.5 rounded-full bg-brand" style={{ width: `${c.pctOfTotal}%` }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <BarList
+              rows={byCategory.map((c) => ({
+                key: c.category,
+                label: EXPENSE_CATEGORY_LABEL[c.category as ExpenseCategory] ?? c.category,
+                value: c.totalCents,
+                hint: `${c.pctOfTotal.toFixed(0)}%`,
+              }))}
+              format={{ kind: "moneda", currency: cur }}
+            />
           )}
         </Card>
 
         <Card title="Tendencia 6 meses" subtitle="Facturado vs gastos, consolidado.">
-          <ul className="space-y-2">
-            {trend.map((t) => (
-              <li key={t.period}>
-                <div className="mb-1 flex justify-between text-xs">
-                  <span className="text-muted">{t.period}</span>
-                  <span className={`tnum ${t.resultCents >= 0 ? "text-ok" : "text-risk"}`}>
-                    {formatMoney(t.resultCents, cur)}
-                  </span>
-                </div>
-                <div className="flex gap-1">
-                  <div className="h-2 rounded-sm bg-ok" style={{ width: `${(t.billedCents / maxTrend) * 100}%` }} />
-                </div>
-                <div className="mt-0.5 flex gap-1">
-                  <div className="h-2 rounded-sm bg-risk" style={{ width: `${(t.expensesCents / maxTrend) * 100}%` }} />
-                </div>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-faint">
-            <span className="text-ok">Barra superior</span>: facturado ·{" "}
-            <span className="text-risk">barra inferior</span>: gastos.
-          </p>
+          <ColumnsChart
+            labels={trend.map((t) => MONTH_SHORT[Number(t.period.slice(5, 7)) - 1])}
+            series={[
+              { key: "facturado", label: "Facturado", slot: 1, values: trend.map((t) => t.billedCents) },
+              { key: "gastos", label: "Gastos", slot: 2, values: trend.map((t) => t.expensesCents) },
+            ]}
+            format={{ kind: "moneda", currency: cur }}
+            height={180}
+          />
         </Card>
       </div>
 
@@ -214,9 +213,14 @@ export default async function FinanzasPage({
         </Card>
       </div>
 
-      <Card className="mt-4" title="Gastos del periodo" subtitle={`${expenses.length} movimiento(s).`}>
+      <Card
+        className="mt-4"
+        title="Gastos del período"
+        subtitle={`${expenses.length} movimiento(s).`}
+        action={<ExportButton kind="gastos" from={range.from} to={range.to} />}
+      >
         {expenses.length === 0 ? (
-          <EmptyState title="Sin gastos cargados en este periodo" />
+          <EmptyState title="Sin gastos cargados en este período" />
         ) : (
           <div className="scroll-x">
             <table className="nf">
@@ -224,7 +228,7 @@ export default async function FinanzasPage({
                 <tr>
                   <th>Fecha</th>
                   <th>Concepto</th>
-                  <th>Categoria</th>
+                  <th>Categoría</th>
                   <th>Proveedor</th>
                   <th>Cliente</th>
                   <th>Tipo</th>
@@ -244,10 +248,10 @@ export default async function FinanzasPage({
                     <td className="text-muted">{e.vendor || "—"}</td>
                     <td className="text-muted">{e.client_name ?? "—"}</td>
                     <td className="text-muted">
-                      {e.cost_type} · {e.recurrence === "recurrente" ? "rec." : "no rec."}
+                      {COST_TYPE_LABEL[e.cost_type] ?? e.cost_type} · {e.recurrence === "recurrente" ? "rec." : "no rec."}
                     </td>
                     <td>
-                      <Badge tone={e.status === "pagado" ? "ok" : "warn"}>{e.status}</Badge>
+                      <Badge tone={e.status === "pagado" ? "ok" : "warn"}>{EXPENSE_STATUS_LABEL[e.status] ?? e.status}</Badge>
                     </td>
                     <td className="tnum text-right">{formatMoney(e.amount_cents, e.currency)}</td>
                   </tr>
@@ -257,6 +261,11 @@ export default async function FinanzasPage({
           </div>
         )}
       </Card>
+      <Note>
+        Todo importe se guarda en su moneda original. El tipo de cambio de referencia solo afecta
+        cómo se suman los totales: cambiarlo en Ajustes no modifica ningún dato cargado. Las
+        comparaciones son contra {prev.label}.
+      </Note>
     </>
   );
 }

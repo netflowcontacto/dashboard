@@ -8,9 +8,9 @@ import type { Area, User } from "../types";
 /**
  * Performance del equipo.
  *
- * Nota de diseno importante: esta funcion devuelve las personas SIEMPRE en
+ * Nota de diseño importante: esta función devuelve las personas SIEMPRE en
  * orden fijo (por id), nunca ordenadas por porcentaje. El dashboard no es un
- * ranking entre companeros: cada persona se compara contra su objetivo, no
+ * ranking entre compañeros: cada persona se compara contra su objetivo, no
  * contra el resto. Ver docs/decisiones.md.
  */
 

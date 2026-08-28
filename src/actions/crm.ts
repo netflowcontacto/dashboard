@@ -14,10 +14,10 @@ const CURRENCIES = ["ARS", "USD"] as const;
 const OUTCOMES = ["open", "won", "lost"] as const;
 
 /**
- * Al avanzar de etapa se completan hacia atras las marcas de tiempo que
+ * Al avanzar de etapa se completan hacia atrás las marcas de tiempo que
  * falten. Sin esto el funnel deja de ser monotono (un lead "en propuesta"
- * sin fecha de contacto haria que Propuestas > Contactados) y los
- * porcentajes de conversion pasan de 100%.
+ * sin fecha de contacto haría que Propuestas > Contactados) y los
+ * porcentajes de conversión pasan de 100%.
  */
 function backfillTimestamps(stage: Stage, current: Record<string, unknown>, now: string) {
   const idx = STAGES.indexOf(stage);
@@ -52,7 +52,7 @@ export async function createLead(_prev: ActionState, fd: FormData): Promise<Acti
     const nextAction = F.optStr(fd, "next_action");
     const nextActionDate = F.optDate(fd, "next_action_date");
     if (!nextAction || !nextActionDate) {
-      return { error: "Toda oportunidad abierta necesita proxima accion y fecha." };
+      return { error: "Toda oportunidad abierta necesita próxima acción y fecha." };
     }
 
     const stage = F.pick<Stage>(fd, "stage", STAGES, "nuevo");
@@ -133,7 +133,7 @@ export async function updateLead(_prev: ActionState, fd: FormData): Promise<Acti
 
     if (!ownerId) return { error: "Toda oportunidad necesita un responsable." };
     if (outcome === "open" && (!nextAction || !nextActionDate)) {
-      return { error: "Una oportunidad abierta no puede quedar sin proxima accion y fecha." };
+      return { error: "Una oportunidad abierta no puede quedar sin próxima acción y fecha." };
     }
     if (outcome === "lost" && !lostReason) {
       return { error: "Para dar por perdida una oportunidad hay que indicar el motivo." };
@@ -238,7 +238,7 @@ export async function moveStage(fd: FormData): Promise<void> {
   revalidatePath(`/crm/${id}`);
 }
 
-/** Registra un follow-up y reprograma la proxima accion. */
+/** Registra un follow-up y reprograma la próxima acción. */
 export async function logFollowUp(fd: FormData): Promise<void> {
   const user = await requireUser();
   if (!can(user, "crm:editar")) return;
@@ -267,7 +267,7 @@ export async function logFollowUp(fd: FormData): Promise<void> {
 
 /**
  * Cierra la oportunidad como ganada y da de alta el cliente en un solo paso.
- * Asi no existe el caso "lead ganado sin cliente cargado", que rompe el CAC
+ * Así no existe el caso "lead ganado sin cliente cargado", que rompe el CAC
  * y el MRR nuevo.
  */
 export async function closeWon(_prev: ActionState, fd: FormData): Promise<ActionState> {

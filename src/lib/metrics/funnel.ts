@@ -7,18 +7,18 @@ import type { Currency } from "../types";
 /**
  * Funnel comercial de NetFlow.
  *
- * Dos lecturas distintas, a proposito:
+ * Dos lecturas distintas, a propósito:
  *
  *  - COHORTE: se toman los leads que INGRESARON en el rango y se mira hasta
- *    donde llegaron. Es la unica forma de que los porcentajes de conversion
+ *    donde llegaron. Es la única forma de que los porcentajes de conversión
  *    sean honestos (siempre <= 100% y decrecientes). Es la que responde
- *    "de lo que entro este mes, cuanto convertimos".
+ *    "de lo que entro este mes, cuánto convertimos".
  *
  *  - ACTIVIDAD: que paso EN el rango, sin importar cuando entro el lead.
  *    Es la que responde "cuantas reuniones hicimos esta semana".
  *
  * Mezclar las dos es el error clasico que hace que un funnel muestre
- * "120% de contacto". Aca estan separadas y etiquetadas.
+ * "120% de contacto". Acá están separadas y etiquetadas.
  */
 
 export interface FunnelStageRow {
@@ -53,7 +53,7 @@ export interface FunnelResult {
   rates: {
     cplCents: number | null;
     contacto: number | null;
-    calificacion: number | null;
+    calificación: number | null;
     leadAReunion: number | null;
     showRate: number | null;
     reunionAPropuesta: number | null;
@@ -68,7 +68,7 @@ function pct(numerator: number, denominator: number): number | null {
   return denominator > 0 ? (numerator / denominator) * 100 : null;
 }
 
-/** Inversion publicitaria del rango. Fuente unica: gastos de categoria paid_media. */
+/** Inversión publicitaria del rango. Fuente única: gastos de categoría paid_media. */
 export function adInvestmentCents(range: DateRange): number {
   const rows = getDb()
     .prepare(
@@ -153,7 +153,7 @@ export function computeFunnel(range: DateRange): FunnelResult {
   const rates = {
     cplCents: c.leads > 0 ? Math.round(investmentCents / c.leads) : null,
     contacto: pct(c.contactados, c.leads),
-    calificacion: pct(c.calificados, c.contactados),
+    calificación: pct(c.calificados, c.contactados),
     leadAReunion: pct(c.reunionesAgendadas, c.leads),
     showRate: pct(num(showRow.realizadas), num(showRow.resueltas)),
     reunionAPropuesta: pct(c.propuestas, c.reunionesRealizadas),

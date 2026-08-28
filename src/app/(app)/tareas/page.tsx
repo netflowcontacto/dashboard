@@ -6,6 +6,7 @@ import { formatDate, todayISO } from "@/lib/dates";
 import { Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui";
 import TaskForm from "./TaskForm";
 import TaskToggle from "./TaskToggle";
+import { TASK_CATEGORY_LABEL, TASK_STATUS_LABEL, PRIORITY_LABEL, CHANNEL_LABEL, humanize } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export default async function TareasPage({
     <>
       <PageHeader
         title="Tareas y proyectos"
-        description="Trabajo operativo del equipo: proyectos, landings, incidencias, contenido y procesos de gestion."
+        description="Trabajo operativo del equipo: proyectos, landings, incidencias, contenido y procesos de gestión."
       >
         <Link href={link({ mias: mine ? null : "1" })} className="btn">
           {mine ? "Ver todas" : "Solo las mias"}
@@ -124,21 +125,21 @@ export default async function TareasPage({
                         {t.status === "bloqueado" && <p className="text-xs text-risk">Bloqueo: {t.blocker}</p>}
                         {t.category === "contenido" && t.channel && (
                           <p className="text-xs text-faint">
-                            {t.channel}
+                            {CHANNEL_LABEL[t.channel] ?? t.channel}
                             {t.planned_date ? ` · planificada ${formatDate(t.planned_date)}` : ""}
                             {t.published_at ? ` · publicada ${formatDate(t.published_at)}` : ""}
                           </p>
                         )}
                       </td>
-                      <td className="text-muted">{t.category}</td>
+                      <td className="text-muted">{TASK_CATEGORY_LABEL[t.category] ?? humanize(t.category)}</td>
                       <td className="text-muted">
                         {t.assignee_id ? (users.get(t.assignee_id)?.name ?? "—") : "—"}
                       </td>
                       <td className="text-muted">{t.client_name ?? "—"}</td>
                       <td className={isOverdue ? "text-risk" : "text-muted"}>{formatDate(t.due_date)}</td>
-                      <td className="text-muted">{t.priority}</td>
+                      <td className="text-muted">{PRIORITY_LABEL[t.priority] ?? humanize(t.priority)}</td>
                       <td>
-                        <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>{t.status.replace("_", " ")}</Badge>
+                        <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>{TASK_STATUS_LABEL[t.status] ?? humanize(t.status)}</Badge>
                       </td>
                       <td className="text-right">
                         <TaskToggle id={t.id} done={t.status === "hecho"} />

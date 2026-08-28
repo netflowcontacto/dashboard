@@ -25,7 +25,7 @@ function Submit({ label }: { label: string }) {
 }
 
 const UNIT_HINT: Record<string, string> = {
-  numero: "cantidad",
+  número: "cantidad",
   porcentaje: "porcentaje (0-100)",
   moneda: "importe en la moneda base",
   horas: "horas",
@@ -46,7 +46,7 @@ export default function ObjectiveForm({
 
   const selected = metrics.find((m) => m.key === metricKey);
 
-  // Al elegir persona o area, mostramos solo las metricas que tienen sentido
+  // Al elegir persona o area, mostramos solo las métricas que tienen sentido
   // para ese ambito, para que nadie cargue "MRR total" como objetivo de Max.
   const visible = metrics.filter((m) => (scope === "empresa" ? m.scope === "empresa" : true));
 
@@ -57,7 +57,7 @@ export default function ObjectiveForm({
         <SuccessBanner message={state.ok} />
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Periodo" required hint="Formato AAAA-MM.">
+          <Field label="Período" required hint="Formato AAAA-MM.">
             <input className="field" name="period" defaultValue={period} pattern="\d{4}-\d{2}" required />
           </Field>
 
@@ -101,7 +101,7 @@ export default function ObjectiveForm({
             </Field>
           )}
 
-          <Field label="Metrica" required hint="El resultado se calcula solo desde los datos del sistema.">
+          <Field label="Métrica" required hint="El resultado se calcula solo desde los datos del sistema.">
             <select
               className="field"
               name="metric_key"
@@ -129,7 +129,7 @@ export default function ObjectiveForm({
             <input className="field" name="target_value" inputMode="decimal" required placeholder="5" />
           </Field>
 
-          <Field label="Peso" hint="Cuanto pesa dentro de la barra de progreso.">
+          <Field label="Peso" hint="Cuánto pesa dentro de la barra de progreso.">
             <input className="field" name="weight" inputMode="decimal" defaultValue="1" />
           </Field>
 
@@ -149,7 +149,7 @@ export default function ObjectiveForm({
           <input className="field w-32" name="to_period" pattern="\d{4}-\d{2}" placeholder="AAAA-MM" />
         </Field>
         <button type="submit" className="btn">
-          Copiar al periodo
+          Copiar al período
         </button>
       </form>
     </div>

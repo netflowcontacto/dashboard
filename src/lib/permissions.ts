@@ -5,16 +5,16 @@ import type { Area, Role, User } from "./types";
  *
  * Principio: el dashboard del equipo NO muestra caja total, margenes, capital
  * disponible, rentabilidad ni costos de otras personas. Eso se garantiza acá,
- * en un solo lugar, y se verifica del lado del servidor en cada pagina.
+ * en un solo lugar, y se verifica del lado del servidor en cada página.
  */
 
 export type Capability =
   | "finanzas:ver"        // caja, margenes, runway, resultado, todos los gastos
-  | "finanzas:cargar"     // alta/edicion de gastos de cualquier categoria
-  | "paid_media:cargar"   // alta/edicion de gastos de inversion publicitaria unicamente
+  | "finanzas:cargar"     // alta/edición de gastos de cualquier categoría
+  | "paid_media:cargar"   // alta/edición de gastos de inversión publicitaria únicamente
   | "funnel:ver"          // funnel completo con CAC y revenue
   | "clientes:ver_fees"   // fee mensual y estado de cobro de cada cliente
-  | "clientes:ver"        // ficha operativa de clientes, sin numeros de facturacion
+  | "clientes:ver"        // ficha operativa de clientes, sin números de facturación
   | "crm:ver_todo"        // todas las oportunidades
   | "crm:editar"
   | "equipo:ver_todos"    // resultados individuales de todo el equipo
@@ -59,7 +59,7 @@ export function isAdmin(user: Pick<User, "role">): boolean {
 /**
  * Una persona siempre puede ver su propio resultado. Ver el de otro requiere
  * "equipo:ver_todos". Esto es lo que evita que el panel del equipo se convierta
- * en un ranking publico entre companeros.
+ * en un ranking público entre compañeros.
  */
 export function canSeeIndividualResults(
   viewer: Pick<User, "id" | "role" | "area">,

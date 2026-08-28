@@ -13,8 +13,8 @@ const PRESETS: { key: RangePreset; label: string }[] = [
 ];
 
 /**
- * Filtro de fechas compartido: dia / semana / mes / trimestre / rango
- * personalizado. Escribe en la URL, asi que cualquier vista es compartible
+ * Filtro de fechas compartido: día / semana / mes / trimestre / rango
+ * personalizado. Escribe en la URL, así que cualquier vista es compartible
  * y el estado sobrevive al refresh.
  */
 export default function RangePicker({

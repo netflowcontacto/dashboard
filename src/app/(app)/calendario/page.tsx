@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { addDays, formatDate, formatDateTime, startOfWeek, todayISO } from "@/lib/dates";
 import { userMap } from "@/lib/queries";
 import { Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui";
+import { MEETING_OUTCOME_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,9 @@ export const dynamic = "force-dynamic";
  * Calendario operativo.
  *
  * En V1 se alimenta de lo que ya vive en el sistema: reuniones del CRM,
- * vencimientos de tareas y proximas acciones. Cuando entre Calendly /
+ * vencimientos de tareas y próximas acciones. Cuando entre Calendly /
  * Google Calendar (V2) las reuniones van a llegar por webhook a la tabla
- * `meetings` y esta pagina las va a mostrar sin cambios estructurales.
+ * `meetings` y esta página las va a mostrar sin cambios estructurales.
  */
 export default async function CalendarioPage({
   searchParams,
@@ -85,9 +86,9 @@ export default async function CalendarioPage({
 
   for (const m of meetings) {
     push(m.meeting_at.slice(0, 10), {
-      kind: "reunion",
+      kind: "reunión",
       label: m.name,
-      detail: `Reunion ${m.meeting_at.slice(11, 16)}${m.company ? ` · ${m.company}` : ""}`,
+      detail: `Reunión ${m.meeting_at.slice(11, 16)}${m.company ? ` · ${m.company}` : ""}`,
       href: `/crm/${m.id}`,
       tone: m.meeting_outcome === "no_show" ? "risk" : "brand",
     });
@@ -103,7 +104,7 @@ export default async function CalendarioPage({
   }
   for (const a of actions) {
     push(a.next_action_date, {
-      kind: "accion",
+      kind: "acción",
       label: a.name,
       detail: `${a.next_action} · ${users.get(a.owner_id)?.name ?? ""}`,
       href: `/crm/${a.id}`,
@@ -124,7 +125,7 @@ export default async function CalendarioPage({
     <>
       <PageHeader
         title="Calendario"
-        description="Proximas 4 semanas: reuniones, vencimientos, proximas acciones del CRM y calendario de contenido."
+        description="Próximas 4 semanas: reuniones, vencimientos, próximas acciones del CRM y calendario de contenido."
       >
         <Link href={mine ? "/calendario" : "/calendario?mias=1"} className="btn">
           {mine ? "Ver todo el equipo" : "Solo lo mio"}
@@ -134,14 +135,14 @@ export default async function CalendarioPage({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Reuniones" value={meetings.length} />
         <StatCard label="Vencimientos" value={deadlines.length} />
-        <StatCard label="Proximas acciones" value={actions.length} />
+        <StatCard label="Próximas acciones" value={actions.length} />
         <StatCard label="Piezas de contenido" value={content.length} />
       </div>
 
       <Card className="mt-4" title="Agenda">
         {byDay.size === 0 ? (
           <EmptyState
-            title="No hay nada agendado en las proximas 4 semanas"
+            title="No hay nada agendado en las próximas 4 semanas"
             detail="Las reuniones se cargan desde la ficha de cada oportunidad en el CRM."
           />
         ) : (
@@ -210,7 +211,7 @@ export default async function CalendarioPage({
                           m.meeting_outcome === "realizada" ? "ok" : m.meeting_outcome === "no_show" ? "risk" : "brand"
                         }
                       >
-                        {m.meeting_outcome}
+                        {MEETING_OUTCOME_LABEL[m.meeting_outcome] ?? m.meeting_outcome}
                       </Badge>
                     </td>
                   </tr>
@@ -222,7 +223,7 @@ export default async function CalendarioPage({
       </Card>
 
       <p className="mt-6 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-        V1: el calendario se arma con lo que ya esta cargado en el sistema. La sincronizacion con
+        V1: el calendario se arma con lo que ya esta cargado en el sistema. La sincronización con
         Calendly y Google Calendar esta preparada en{" "}
         <Link href="/integraciones" className="text-brand hover:underline">
           Integraciones

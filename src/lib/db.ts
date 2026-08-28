@@ -21,7 +21,7 @@ export function getDb(): Database.Database {
   return db;
 }
 
-/** Ejecuta un bloque dentro de una transaccion. */
+/** Ejecuta un bloque dentro de una transacción. */
 export function tx<T>(fn: (db: Database.Database) => T): T {
   const db = getDb();
   return db.transaction(fn)(db);

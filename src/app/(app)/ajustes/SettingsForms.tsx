@@ -26,13 +26,13 @@ export function FxForm({ rate, base }: { rate: number; base: string }) {
       <SuccessBanner message={state.ok} />
       <p className="text-xs text-muted">
         Los importes se guardan siempre en su moneda original. El tipo de cambio se usa solo para
-        consolidar los totales, asi que cambiarlo no altera ningun dato cargado.
+        consolidar los totales, así que cambiarlo no altera ningún dato cargado.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Tipo de cambio de referencia" required hint="Cuantos ARS equivalen a 1 USD.">
+        <Field label="Tipo de cambio de referencia" required hint="Cuántos ARS equivalen a 1 USD.">
           <input className="field" name="fx_ars_per_usd" inputMode="decimal" defaultValue={rate} required />
         </Field>
-        <Field label="Moneda de consolidacion">
+        <Field label="Moneda de consolidación">
           <select className="field" name="base_currency" defaultValue={base}>
             <option value="USD">USD</option>
             <option value="ARS">ARS</option>
@@ -63,7 +63,7 @@ export function OperationalForm({
         <Field label="SLA de primer contacto (horas)" hint="Pasado ese tiempo, el lead genera alerta.">
           <input className="field" name="sla_primer_contacto_horas" inputMode="numeric" defaultValue={sla} />
         </Field>
-        <Field label="Dias sin follow-up de propuesta" hint="Cuando avisar que una propuesta se enfria.">
+        <Field label="Días sin follow-up de propuesta" hint="Cuando avisar que una propuesta se enfría.">
           <input className="field" name="dias_follow_up_propuesta" inputMode="numeric" defaultValue={followUpDays} />
         </Field>
       </div>
@@ -133,7 +133,7 @@ export function UserForm({ users, currentUserId }: { users: User[]; currentUserI
           <Field label="Email" required>
             <input className="field" type="email" name="email" required />
           </Field>
-          <Field label="Contrasena inicial" required hint="Minimo 8 caracteres.">
+          <Field label="Contraseña inicial" required hint="Mínimo 8 caracteres.">
             <input className="field" type="password" name="password" minLength={8} required />
           </Field>
           <Field label="Rol" hint="Administrador ve finanzas y toda la empresa.">

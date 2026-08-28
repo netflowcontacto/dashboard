@@ -31,11 +31,11 @@ export async function saveUser(_prev: ActionState, fd: FormData): Promise<Action
         "UPDATE users SET name=?, email=?, role=?, area=?, job_title=?, active=? WHERE id=?",
       ).run(name, email, role, area, jobTitle, active, id);
       if (password) {
-        if (password.length < 8) return { error: "La contrasena tiene que tener al menos 8 caracteres." };
+        if (password.length < 8) return { error: "La contraseña tiene que tener al menos 8 caracteres." };
         db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(password), id);
       }
     } else {
-      if (password.length < 8) return { error: "La contrasena tiene que tener al menos 8 caracteres." };
+      if (password.length < 8) return { error: "La contraseña tiene que tener al menos 8 caracteres." };
       db.prepare(
         "INSERT INTO users (name, email, password_hash, role, area, job_title, active) VALUES (?,?,?,?,?,?,?)",
       ).run(name, email, hashPassword(password), role, area, jobTitle, 1);
@@ -51,7 +51,7 @@ export async function saveUser(_prev: ActionState, fd: FormData): Promise<Action
 export async function toggleUserActive(fd: FormData): Promise<void> {
   const admin = await requireAdmin();
   const id = F.int(fd, "id");
-  // Nadie se puede desactivar a si mismo: evita quedarse sin ningun admin.
+  // Nadie se puede desactivar a si mismo: evita quedarse sin ningún admin.
   if (!id || id === admin.id) return;
 
   getDb().prepare("UPDATE users SET active = 1 - active WHERE id = ?").run(id);

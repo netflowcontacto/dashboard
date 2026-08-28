@@ -6,6 +6,8 @@ import { formatDate, todayISO } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { baseCurrency, toBase } from "@/lib/fx";
 import { Badge, Card, EmptyState, PageHeader, Semaforo, StatCard } from "@/components/ui";
+import ExportButton from "@/components/ExportButton";
+import { PAYMENT_STATUS_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,7 @@ const ONBOARDING_LABEL: Record<string, string> = {
 };
 
 /**
- * Clientes. La misma pagina sirve a direccion y al equipo: las columnas de
+ * Clientes. La misma página sirve a dirección y al equipo: las columnas de
  * fee y estado de cobro solo se renderizan si la persona tiene el permiso.
  * No se envian al cliente datos que no puede ver.
  */
@@ -49,6 +51,7 @@ export default async function ClientesPage({
         title="Clientes"
         description="Estado de cada cuenta activa: plan, responsables, onboarding y semaforo."
       >
+        <ExportButton kind="clientes" />
         <Link href={showChurned ? "/clientes" : "/clientes?bajas=1"} className="btn">
           {showChurned ? "Ocultar bajas" : "Ver bajas"}
         </Link>
@@ -62,7 +65,7 @@ export default async function ClientesPage({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Clientes activos" value={active.length} />
         <StatCard label="Bien" value={counts.bien} tone="ok" />
-        <StatCard label="En atencion" value={counts.atencion} tone={counts.atencion ? "warn" : "neutral"} />
+        <StatCard label="En atención" value={counts.atencion} tone={counts.atencion ? "warn" : "neutral"} />
         {verFees ? (
           <StatCard label="MRR" value={formatMoney(mrr, base)} />
         ) : (
@@ -85,7 +88,7 @@ export default async function ClientesPage({
                   <th>Plan</th>
                   {verFees && <th className="text-right">Fee mensual</th>}
                   <th>Alta</th>
-                  {verFees && <th>Proximo cobro</th>}
+                  {verFees && <th>Próximo cobro</th>}
                   {verFees && <th>Pago</th>}
                   <th>Paid Media</th>
                   <th>Setter</th>
@@ -130,7 +133,7 @@ export default async function ClientesPage({
                                   : "risk"
                             }
                           >
-                            {c.payment_status.replace("_", " ")}
+                            {PAYMENT_STATUS_LABEL[c.payment_status] ?? c.payment_status}
                           </Badge>
                         </td>
                       )}

@@ -1,7 +1,7 @@
 /**
  * Todo el dashboard trabaja con rangos [from, to] inclusivos en formato
- * YYYY-MM-DD. Los presets (dia / semana / mes) y el rango personalizado
- * producen exactamente la misma estructura, asi que cualquier metrica
+ * YYYY-MM-DD. Los presets (día / semana / mes) y el rango personalizado
+ * producen exactamente la misma estructura, así que cualquier métrica
  * acepta cualquier filtro sin ramificar.
  */
 
@@ -54,7 +54,7 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
-/** Dias que quedan del mes de `iso`, contando hoy. */
+/** Días que quedan del mes de `iso`, contando hoy. */
 export function daysLeftInMonth(iso = todayISO()): number {
   return daysBetween(iso, endOfMonth(iso)) + 1;
 }

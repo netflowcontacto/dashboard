@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 /**
  * Equipo y performance.
  *
- * Decision de producto explicita: esta pagina NO es una tabla de posiciones.
+ * Decisión de producto explicita: esta página NO es una tabla de posiciones.
  *
  *   - Las personas aparecen en orden fijo (por id), nunca ordenadas por
  *     porcentaje de cumplimiento.
@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
  *
  * Ver docs/decisiones.md. Si en algun momento hace falta ordenar esta lista,
  * conviene discutir antes que implementar: el incentivo que genera un ranking
- * publico entre companeros con funciones distintas no es el que buscamos.
+ * público entre compañeros con funciones distintas no es el que buscamos.
  */
 export default async function EquipoPage({
   searchParams,
@@ -106,7 +106,7 @@ export default async function EquipoPage({
               />
               {p.progress.pct !== null && (
                 <p className="mt-1.5 text-xs text-muted">
-                  Ritmo esperado {formatPct(p.progress.expectedPct)} · quedan {p.progress.daysLeft} dia(s).
+                  Ritmo esperado {formatPct(p.progress.expectedPct)} · quedan {p.progress.daysLeft} día(s).
                 </p>
               )}
             </div>
@@ -140,7 +140,7 @@ export default async function EquipoPage({
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
-                Metricas de la funcion (informativas, no puntuan)
+                Métricas de la función (informativas, no puntuan)
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {p.metrics.map((m) => (
@@ -156,7 +156,7 @@ export default async function EquipoPage({
       </div>
 
       <p className="mt-6 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-        Las metricas de cada funcion se muestran para entender el trabajo, no para puntuar. Lo unico que
+        Las métricas de cada función se muestran para entender el trabajo, no para puntuar. Lo único que
         alimenta la barra son los objetivos cargados en{" "}
         <Link href="/objetivos" className="text-brand hover:underline">
           Objetivos

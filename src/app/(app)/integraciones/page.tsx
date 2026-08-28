@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { integrationStatuses } from "@/lib/integrations";
 import { formatDateTime } from "@/lib/dates";
 import { Badge, Card, EmptyState, PageHeader, type Tone } from "@/components/ui";
+import { INTEGRATION_STATUS_LABEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function IntegracionesPage() {
                       i.status === "activa" ? "ok" : i.status === "error" ? "risk" : i.configured ? "warn" : "neutral"
                     }
                   >
-                    {i.configured ? i.status.replace("_", " ") : "sin configurar"}
+                    {i.configured ? (INTEGRATION_STATUS_LABEL[i.status] ?? i.status) : "Sin configurar"}
                   </Badge>
                 </dd>
               </div>
@@ -68,13 +69,13 @@ export default async function IntegracionesPage() {
               </div>
               {i.lastSyncAt && (
                 <div className="flex justify-between gap-3">
-                  <dt className="text-faint">Ultimo evento</dt>
+                  <dt className="text-faint">Último evento</dt>
                   <dd>{formatDateTime(i.lastSyncAt)}</dd>
                 </div>
               )}
               {i.lastError && (
                 <div className="flex justify-between gap-3">
-                  <dt className="text-faint">Ultimo error</dt>
+                  <dt className="text-faint">Último error</dt>
                   <dd className="text-risk">{i.lastError}</dd>
                 </div>
               )}
@@ -85,11 +86,11 @@ export default async function IntegracionesPage() {
         ))}
       </div>
 
-      <Card className="mt-4" title="Ultimos eventos recibidos" subtitle="Todo payload entrante se guarda crudo: se puede auditar y reprocesar.">
+      <Card className="mt-4" title="Últimos eventos recibidos" subtitle="Todo payload entrante se guarda crudo: se puede auditar y reprocesar.">
         {recent.length === 0 ? (
           <EmptyState
-            title="Todavia no llego ningun evento"
-            detail="Es lo esperado hasta que se configure la primera integracion."
+            title="Todavia no llego ningún evento"
+            detail="Es lo esperado hasta que se configure la primera integración."
           />
         ) : (
           <div className="scroll-x">

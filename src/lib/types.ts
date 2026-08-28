@@ -30,8 +30,8 @@ export const STAGE_LABEL: Record<Stage, string> = {
   nuevo: "Nuevo lead",
   contactado: "Contactado",
   calificado: "Calificado",
-  reunion_agendada: "Reunion agendada",
-  reunion_realizada: "Reunion realizada",
+  reunion_agendada: "Reunión agendada",
+  reunion_realizada: "Reunión realizada",
   propuesta: "Propuesta",
   follow_up: "Follow-up",
   ganado: "Ganado",
@@ -39,7 +39,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
 };
 
 export const AREA_LABEL: Record<Area, string> = {
-  direccion: "Direccion / Marketing / Gestion",
+  direccion: "Dirección / Marketing / Gestión",
   closer: "CEO / Closer",
   paid_media: "Paid Media",
   setter: "Setter",
@@ -143,4 +143,126 @@ export interface Client {
   churned_at: string | null;
   churn_reason: string | null;
   notes: string;
+}
+
+/* --------------------------------------------------------------------------
+   Etiquetas de presentación.
+
+   Los valores de la base son snake_case en minúscula porque son claves, no
+   texto. Mostrarlos crudos ("no_show", "correccion", "al_dia") hace que el
+   producto se vea sin terminar. Toda pantalla que muestre uno de estos
+   valores pasa por acá.
+   -------------------------------------------------------------------------- */
+
+export const TASK_CATEGORY_LABEL: Record<string, string> = {
+  tarea: "Tarea",
+  proyecto: "Proyecto",
+  landing: "Landing",
+  incidencia: "Incidencia",
+  correccion: "Corrección",
+  contenido: "Contenido",
+  proceso: "Proceso",
+};
+
+export const TASK_STATUS_LABEL: Record<string, string> = {
+  pendiente: "Pendiente",
+  en_curso: "En curso",
+  bloqueado: "Bloqueado",
+  hecho: "Hecho",
+  cancelada: "Cancelada",
+};
+
+export const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  al_dia: "Al día",
+  pendiente: "Pendiente",
+  vencido: "Vencido",
+};
+
+export const ONBOARDING_LABEL: Record<string, string> = {
+  pendiente: "Pendiente",
+  en_curso: "En curso",
+  completo: "Completo",
+};
+
+export const MEETING_OUTCOME_LABEL: Record<string, string> = {
+  sin_reunion: "Sin reunión",
+  agendada: "Agendada",
+  realizada: "Realizada",
+  no_show: "No-show",
+  reprogramada: "Reprogramada",
+  cancelada: "Cancelada",
+};
+
+export const INVOICE_STATUS_LABEL: Record<string, string> = {
+  pendiente: "Pendiente",
+  cobrada: "Cobrada",
+  incobrable: "Incobrable",
+};
+
+export const EXPENSE_STATUS_LABEL: Record<string, string> = {
+  pagado: "Pagado",
+  pendiente: "Pendiente",
+};
+
+export const COST_TYPE_LABEL: Record<string, string> = {
+  fijo: "Fijo",
+  variable: "Variable",
+};
+
+export const RECURRENCE_LABEL: Record<string, string> = {
+  recurrente: "Recurrente",
+  no_recurrente: "No recurrente",
+};
+
+export const PRIORITY_LABEL: Record<string, string> = {
+  baja: "Baja",
+  media: "Media",
+  alta: "Alta",
+};
+
+export const SOURCE_LABEL: Record<string, string> = {
+  meta_ads: "Meta Ads",
+  google_ads: "Google Ads",
+  instagram_ads: "Instagram Ads",
+  pauta: "Pauta",
+  referido: "Referido",
+  linkedin: "LinkedIn",
+  outbound: "Outbound",
+  web: "Web",
+  manychat: "ManyChat",
+  calendly: "Calendly",
+  form: "Formulario",
+  otro: "Otro",
+};
+
+export const CHANNEL_LABEL: Record<string, string> = {
+  "": "—",
+  linkedin_netflow: "LinkedIn NetFlow",
+  linkedin_facundo: "LinkedIn Facundo",
+  instagram: "Instagram",
+  newsletter: "Newsletter",
+  otro: "Otro",
+};
+
+export const LEAD_EVENT_LABEL: Record<string, string> = {
+  cambio_etapa: "Cambio de etapa",
+  follow_up: "Follow-up",
+  nota: "Nota",
+  no_show: "No-show",
+  recuperacion: "Recuperación",
+  integracion: "Integración",
+};
+
+export const INTEGRATION_STATUS_LABEL: Record<string, string> = {
+  no_configurada: "Sin configurar",
+  configurada: "Configurada",
+  activa: "Activa",
+  error: "Con error",
+};
+
+/** Último recurso: convierte una clave desconocida en algo legible. */
+export function humanize(value: string): string {
+  if (!value) return "—";
+  const s = value.replace(/_/g, " ");
+  return s[0].toUpperCase() + s.slice(1);
 }

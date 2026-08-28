@@ -35,7 +35,7 @@ export default function CampaignAssetForm({ today }: { today: string }) {
         <Field label="Plataforma">
           <input className="field" name="platform" defaultValue="meta" />
         </Field>
-        <Field label="Campana">
+        <Field label="Campaña">
           <input className="field" name="campaign" />
         </Field>
         <Field label="Fecha" required>

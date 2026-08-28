@@ -18,7 +18,7 @@ function Submit({ label }: { label: string }) {
 
 /**
  * Carga de gastos.
- * `onlyPaidMedia` fija la categoria en inversion publicitaria y esconde el
+ * `onlyPaidMedia` fija la categoría en inversión publicitaria y esconde el
  * resto: es la vista que usa Paid Media, sin acceso a los demas costos.
  */
 export default function ExpenseForm({
@@ -39,13 +39,13 @@ export default function ExpenseForm({
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Concepto" required>
-          <input className="field" name="concept" required placeholder="Ej: campana Meta agosto" />
+          <input className="field" name="concept" required placeholder="Ej: campaña Meta agosto" />
         </Field>
 
         {onlyPaidMedia ? (
           <input type="hidden" name="category" value="paid_media" />
         ) : (
-          <Field label="Categoria" required>
+          <Field label="Categoría" required>
             <select className="field" name="category" defaultValue="software" required>
               {EXPENSE_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -106,10 +106,10 @@ export default function ExpenseForm({
           </select>
         </Field>
 
-        <Field label="Plataforma" hint={onlyPaidMedia ? "Meta, Google, etc." : "Solo para inversion publicitaria."}>
+        <Field label="Plataforma" hint={onlyPaidMedia ? "Meta, Google, etc." : "Solo para inversión publicitaria."}>
           <input className="field" name="platform" defaultValue={onlyPaidMedia ? "meta" : ""} />
         </Field>
-        <Field label="Campana">
+        <Field label="Campaña">
           <input className="field" name="campaign" />
         </Field>
       </div>
@@ -139,7 +139,7 @@ export function CashForm({ today }: { today: string }) {
       <ErrorBanner message={state.error} />
       <SuccessBanner message={state.ok} />
       <p className="text-xs text-muted">
-        La caja se declara a mano por cuenta. Se toma siempre el ultimo saldo cargado de cada una.
+        La caja se declara a mano por cuenta. Se toma siempre el último saldo cargado de cada una.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Cuenta" required>

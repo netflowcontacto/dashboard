@@ -15,19 +15,19 @@ const TONE: Record<AlertSeverity, "risk" | "warn" | "neutral"> = {
 
 const KIND_LABEL: Record<string, string> = {
   lead_sin_contactar: "Leads sin contactar",
-  lead_sin_proxima_accion: "Sin proxima accion",
+  lead_sin_proxima_accion: "Sin próxima acción",
   accion_vencida: "Acciones vencidas",
-  reunion_proxima: "Reuniones proximas",
+  reunion_proxima: "Reuniones próximas",
   no_show: "No-shows",
   propuesta_sin_follow_up: "Propuestas sin follow-up",
   pago_pendiente: "Cobros pendientes",
   cliente_en_riesgo: "Clientes en riesgo",
-  cliente_atencion: "Clientes en atencion",
+  cliente_atencion: "Clientes en atención",
   onboarding_trabado: "Onboarding trabado",
   tarea_vencida: "Tareas vencidas",
   bloqueo: "Bloqueos",
   objetivo_atrasado: "Objetivos atrasados",
-  campana_con_problema: "Campanas con problema",
+  campana_con_problema: "Campañas con problema",
 };
 
 export default async function AlertasPage({
@@ -66,7 +66,7 @@ export default async function AlertasPage({
 
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Urgentes" value={counts.urgente} tone={counts.urgente ? "risk" : "ok"} />
-        <StatCard label="Atencion" value={counts.atencion} tone={counts.atencion ? "warn" : "ok"} />
+        <StatCard label="Atención" value={counts.atencion} tone={counts.atencion ? "warn" : "ok"} />
         <StatCard label="Informativas" value={counts.info} />
       </div>
 
@@ -104,7 +104,7 @@ export default async function AlertasPage({
 
       {!can(user, "finanzas:ver") && (
         <p className="mt-6 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-          Las alertas de cobros y facturacion son de direccion y no aparecen en esta vista.
+          Las alertas de cobros y facturación son de dirección y no aparecen en esta vista.
         </p>
       )}
     </>

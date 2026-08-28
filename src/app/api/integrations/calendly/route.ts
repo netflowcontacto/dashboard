@@ -8,17 +8,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Webhook de Calendly. Es la prioridad de la V2: una reunion agendada por Max
+ * Webhook de Calendly. Es la prioridad de la V2: una reunión agendada por Max
  * tiene que reflejarse sola en el CRM, sin cargarla dos veces.
  *
- * Eventos soportados: invitee.created (reunion agendada) e invitee.canceled.
+ * Eventos soportados: invitee.created (reunión agendada) e invitee.canceled.
  * La firma se valida siempre; sin signing key configurada el endpoint responde
  * 503 en vez de aceptar cualquier cosa.
  */
 export async function POST(request: Request) {
   if (!process.env.CALENDLY_WEBHOOK_SIGNING_KEY) {
     return NextResponse.json(
-      { error: "Integracion no configurada. Definir CALENDLY_WEBHOOK_SIGNING_KEY." },
+      { error: "Integración no configurada. Definir CALENDLY_WEBHOOK_SIGNING_KEY." },
       { status: 503 },
     );
   }
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
            VALUES (?,?,?,?, 'agendada', 'calendly', ?)`,
         )
         .run(
-          body.payload?.scheduled_event?.name ?? "Reunion",
+          body.payload?.scheduled_event?.name ?? "Reunión",
           result.leadId,
           startTime.slice(0, 19).replace("T", " "),
           body.payload?.scheduled_event?.end_time?.slice(0, 19).replace("T", " ") ?? null,

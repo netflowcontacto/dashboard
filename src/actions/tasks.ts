@@ -113,7 +113,7 @@ export async function deleteTask(fd: FormData): Promise<void> {
 
 export async function saveAnnouncement(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (user.role !== "admin") return { error: "Solo direccion puede publicar avisos." };
+  if (user.role !== "admin") return { error: "Solo dirección puede publicar avisos." };
 
   const title = F.optStr(fd, "title");
   if (!title) return { error: "El aviso necesita un titulo." };

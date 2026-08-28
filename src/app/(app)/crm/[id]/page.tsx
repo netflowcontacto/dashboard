@@ -8,6 +8,7 @@ import { STAGE_LABEL } from "@/lib/types";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import LeadForm from "../LeadForm";
 import { CloseLostForm, CloseWonForm, FollowUpForm, ReopenForm } from "./CloseControls";
+import { LEAD_EVENT_LABEL, humanize, type Stage } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         {lead.potential_value_cents > 0 && (
           <Badge tone="brand">{formatMoney(lead.potential_value_cents, lead.potential_currency)} / mes</Badge>
         )}
-        {overdue && <Badge tone="risk">Accion vencida ({formatDate(lead.next_action_date)})</Badge>}
+        {overdue && <Badge tone="risk">Acción vencida ({formatDate(lead.next_action_date)})</Badge>}
         {lead.outcome === "lost" && lead.lost_reason && <Badge tone="risk">Perdida: {lead.lost_reason}</Badge>}
       </div>
 
@@ -82,7 +83,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <FollowUpForm leadId={lead.id} today={today} />
           </Card>
 
-          <Card title="Linea de tiempo">
+          <Card title="Línea de tiempo">
             {events.length === 0 ? (
               <p className="text-sm text-muted">Sin movimientos registrados.</p>
             ) : (
@@ -91,10 +92,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   <li key={e.id} className="border-l-2 border-border pl-3">
                     <p className="text-sm">
                       {e.type === "cambio_etapa"
-                        ? `${e.from_stage ? `${e.from_stage} → ` : ""}${e.to_stage}`
-                        : e.type === "follow_up"
-                          ? "Follow-up"
-                          : e.type}
+                        ? `${e.from_stage ? `${STAGE_LABEL[e.from_stage as Stage] ?? e.from_stage} → ` : ""}${
+                            STAGE_LABEL[e.to_stage as Stage] ?? e.to_stage
+                          }`
+                        : (LEAD_EVENT_LABEL[e.type] ?? humanize(e.type))}
                     </p>
                     {e.detail && <p className="text-xs text-muted">{e.detail}</p>}
                     <p className="text-xs text-faint">

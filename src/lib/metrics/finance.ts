@@ -5,10 +5,10 @@ import { addDays, monthOf, type DateRange } from "../dates";
 import type { Currency } from "../types";
 
 /**
- * Motor financiero. TODO lo que sale de aca es informacion sensible:
- * solo se consume desde paginas protegidas con requireAdmin().
+ * Motor financiero. TODO lo que sale de acá es información sensible:
+ * solo se consume desde páginas protegidas con requireAdmin().
  *
- * Regla de consolidacion: cada fila se guarda en su moneda original y se
+ * Regla de consolidación: cada fila se guarda en su moneda original y se
  * convierte a la moneda base al sumar, con el tipo de cambio de referencia.
  */
 
@@ -25,7 +25,7 @@ function consolidate(rows: MoneyRow[]): number {
 
 export interface FinanceSummary {
   currency: Currency;
-  /** Facturacion emitida en el rango (devengado) */
+  /** Facturación emitida en el rango (devengado) */
   billedCents: number;
   collectedCents: number;
   pendingCents: number;
@@ -134,7 +134,7 @@ export function financeSummary(range: DateRange): FinanceSummary {
   };
 }
 
-/** Caja disponible = ultimo saldo declarado de cada cuenta, consolidado. */
+/** Caja disponible = último saldo declarado de cada cuenta, consolidado. */
 export function cashAvailableCents(asOf: string): number {
   const rows = getDb()
     .prepare(
@@ -149,7 +149,7 @@ export function cashAvailableCents(asOf: string): number {
   return consolidate(rows);
 }
 
-/** Burn promedio de los ultimos 3 meses cerrados + el corriente. */
+/** Burn promedio de los últimos 3 meses cerrados + el corriente. */
 export function averageMonthlyBurnCents(asOf: string): number {
   const since = addDays(asOf, -89);
   const rows = getDb()

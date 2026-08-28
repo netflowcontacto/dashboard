@@ -1,6 +1,6 @@
 /**
  * Traduce los errores de la base al lenguaje del equipo.
- * Los CHECK constraints son la ultima linea de defensa de las reglas de
+ * Los CHECK constraints son la última línea de defensa de las reglas de
  * negocio; cuando saltan, la persona tiene que leer algo accionable y no
  * un mensaje de SQLite.
  */
@@ -8,7 +8,7 @@ export function errorMessage(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);
 
   if (raw.includes("lead_abierto_necesita_proxima_accion")) {
-    return "Una oportunidad abierta no puede quedar sin proxima accion y fecha.";
+    return "Una oportunidad abierta no puede quedar sin próxima acción y fecha.";
   }
   if (raw.includes("lead_perdido_necesita_motivo")) {
     return "Para dar por perdida una oportunidad hay que indicar el motivo.";

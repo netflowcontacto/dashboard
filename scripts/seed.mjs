@@ -5,10 +5,12 @@
  * (5 clientes nuevos), con los objetivos derivados por area.
  *
  * NO crea datos comerciales de ejemplo: el CRM, los clientes y las finanzas
- * arrancan vacios para que los primeros numeros del dashboard sean reales.
+ * arrancan vacios para que los primeros números del dashboard sean reales.
  * Para cargar datos de demostracion: `npm run db:seed -- --demo`.
  *
  *   npm run db:seed
+ *
+ * Corre con node directamente: no necesita ningún compilador.
  */
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
@@ -28,12 +30,12 @@ db.exec(fs.readFileSync(path.join(process.cwd(), "src", "lib", "schema.sql"), "u
 const today = new Date().toISOString().slice(0, 10);
 const period = today.slice(0, 7);
 
-function hash(plain: string) {
+function hash(plain) {
   return bcrypt.hashSync(plain, 10);
 }
 
 // --- Ajustes ----------------------------------------------------------------
-const settings: [string, string][] = [
+const settings = [
   ["fx_ars_per_usd", "1000"],
   ["base_currency", "USD"],
   ["sla_primer_contacto_horas", "24"],
@@ -49,12 +51,8 @@ for (const [k, v] of settings) upsertSetting.run(k, v);
 const adminEmail = (process.env.SEED_ADMIN_EMAIL || "netflow.contacto@gmail.com").toLowerCase();
 const adminPassword = process.env.SEED_ADMIN_PASSWORD || "netflow-cambiar-2025";
 
-const team: {
-  name: string; email: string; role: "admin" | "member";
-  area: "direccion" | "closer" | "paid_media" | "setter" | "desarrollo";
-  jobTitle: string; password: string;
-}[] = [
-  { name: "Leandro", email: adminEmail, role: "admin", area: "direccion", jobTitle: "Direccion / Marketing / Gestion", password: adminPassword },
+const team = [
+  { name: "Leandro", email: adminEmail, role: "admin", area: "direccion", jobTitle: "Dirección / Marketing / Gestión", password: adminPassword },
   { name: "Facundo", email: "facundo@netflow.local", role: "admin", area: "closer", jobTitle: "CEO / Closer", password: adminPassword },
   { name: "Sophia", email: "sophia@netflow.local", role: "member", area: "paid_media", jobTitle: "Paid Media", password: adminPassword },
   { name: "Max", email: "max@netflow.local", role: "member", area: "setter", jobTitle: "Setter", password: adminPassword },
@@ -71,12 +69,11 @@ for (const m of team) {
   insertUser.run(m.name, m.email, hash(m.password), m.role, m.area, m.jobTitle);
 }
 
-const users = db.prepare("SELECT id, name, area FROM users").all() as
-  { id: number; name: string; area: string }[];
-const byArea = (area: string) => users.find((u) => u.area === area)?.id ?? null;
+const users = db.prepare("SELECT id, name, area FROM users").all();
+const byArea = (area) => users.find((u) => u.area === area)?.id ?? null;
 
 // --- Objetivos del mes ------------------------------------------------------
-// El objetivo general es 5 clientes nuevos. Los de area son los numeros que
+// El objetivo general es 5 clientes nuevos. Los de area son los números que
 // tienen que pasar para que ese objetivo sea alcanzable, no metas sueltas.
 const insertObjective = db.prepare(
   `INSERT INTO objectives (period, scope, area, user_id, metric_key, label, target_value, weight, direction)
@@ -88,8 +85,8 @@ insertObjective.run(period, "empresa", null, null, "clientes_nuevos", "Clientes 
 insertObjective.run(period, "empresa", null, null, "leads_totales", "Leads generados", 100, 1, "higher_is_better");
 insertObjective.run(period, "empresa", null, null, "clientes_activos", "Clientes activos", 10, 1, "higher_is_better");
 
-const areaObjectives: [string, string, number, number][] = [
-  // area, metrica, objetivo, peso
+const areaObjectives = [
+  // area, métrica, objetivo, peso
   ["closer", "reuniones_realizadas", 20, 2],
   ["closer", "propuestas", 12, 1],
   ["closer", "cierres", 5, 3],
@@ -112,8 +109,8 @@ for (const [area, metric, target, weight] of areaObjectives) {
 }
 
 // Objetivos individuales: espejo de los del area, para que la barra de cada
-// persona tenga contra que medirse desde el dia uno.
-const personObjectives: [string, string, number, number][] = [
+// persona tenga contra que medirse desde el día uno.
+const personObjectives = [
   ["closer", "reuniones_realizadas", 20, 2],
   ["closer", "cierres", 5, 3],
   ["closer", "close_rate", 25, 1],
@@ -135,7 +132,7 @@ for (const [area, metric, target, weight] of personObjectives) {
   }
 }
 
-// Las metricas donde menos es mejor se corrigen aca (CPL, tiempo de respuesta).
+// Las métricas donde menos es mejor se corrigen acá (CPL, tiempo de respuesta).
 db.prepare(
   `UPDATE objectives SET direction = 'lower_is_better'
    WHERE metric_key IN ('cpl','tiempo_respuesta_horas','pendientes','incidencias',
@@ -165,12 +162,12 @@ function seedDemo() {
   const devId = byArea("desarrollo");
   const dirId = byArea("direccion");
 
-  const day = (offset: number) => {
+  const day = (offset) => {
     const d = new Date();
     d.setDate(d.getDate() + offset);
     return d.toISOString().slice(0, 10);
   };
-  const stamp = (offset: number, hour = 15) => `${day(offset)} ${String(hour).padStart(2, "0")}:00:00`;
+  const stamp = (offset, hour = 15) => `${day(offset)} ${String(hour).padStart(2, "0")}:00:00`;
 
   const insertLead = db.prepare(
     `INSERT INTO leads (name, company, specialty, contact_email, contact_phone, source, entered_at,
@@ -181,16 +178,16 @@ function seedDemo() {
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   );
 
-  const demoLeads: unknown[][] = [
-    ["Dra. Paula Rivas", "Centro Dermatologico Rivas", "Dermatologia", "paula@ejemplo.com", "+5491100000001", "meta_ads", day(-22), setterId, setterId, closerId, "propuesta", "Llamar para cerrar", day(1), stamp(-22, 10), stamp(-21), stamp(-20), stamp(-16), stamp(-16), "realizada", stamp(-14), "Plan Crecimiento", 90000, "USD", "open", null, null, stamp(-22, 9), ""],
-    ["Dr. Nicolas Ferrer", "Odontologia Ferrer", "Odontologia", "nico@ejemplo.com", "+5491100000002", "meta_ads", day(-18), closerId, setterId, closerId, "reunion_realizada", "Enviar propuesta", day(0), stamp(-18, 11), stamp(-17), stamp(-15), stamp(-9), stamp(-9), "realizada", null, "Plan Inicial", 60000, "USD", "open", null, null, stamp(-18, 10), ""],
-    ["Clinica Norte", "Clinica Norte", "Multiespecialidad", "info@ejemplo.com", "+5491100000003", "referido", day(-12), setterId, setterId, closerId, "reunion_agendada", "Confirmar asistencia", day(2), stamp(-12, 14), stamp(-11), stamp(-8), stamp(3), null, "agendada", null, "Plan Crecimiento", 120000, "USD", "open", null, null, stamp(-12, 13), ""],
-    ["Dra. Luciana Paz", "Consultorio Paz", "Nutricion", "luciana@ejemplo.com", "+5491100000004", "instagram_ads", day(-9), setterId, setterId, null, "calificado", "Ofrecer horarios de reunion", day(1), stamp(-9, 12), stamp(-8), null, null, null, "sin_reunion", null, "", 45000, "USD", "open", null, null, stamp(-9, 11), ""],
-    ["Dr. Ramiro Cano", "Traumatologia Cano", "Traumatologia", "ramiro@ejemplo.com", "+5491100000005", "meta_ads", day(-6), setterId, setterId, null, "contactado", "Segundo intento por WhatsApp", day(0), stamp(-5), null, null, null, null, "sin_reunion", null, "", 0, "USD", "open", null, null, stamp(-6, 9), ""],
-    ["Centro Vision Sur", "Centro Vision Sur", "Oftalmologia", "contacto@ejemplo.com", "", "meta_ads", day(-3), setterId, setterId, null, "nuevo", "Primer contacto", day(0), null, null, null, null, null, "sin_reunion", null, "", 0, "USD", "open", null, null, stamp(-3, 16), ""],
-    ["Dr. Julian Costa", "Kinesiologia Costa", "Kinesiologia", "julian@ejemplo.com", "", "google_ads", day(-25), closerId, setterId, closerId, "perdido", "Sin accion", day(-5), stamp(-25, 10), stamp(-24), stamp(-23), stamp(-19), null, "no_show", null, "", 50000, "USD", "lost", "No-show repetido, no volvio a responder", stamp(-15), stamp(-25, 9), ""],
+  const demoLeads = [
+    ["Dra. Paula Rivas", "Centro Dermatológico Rivas", "Dermatología", "paula@ejemplo.com", "+5491100000001", "meta_ads", day(-22), setterId, setterId, closerId, "propuesta", "Llamar para cerrar", day(1), stamp(-22, 10), stamp(-21), stamp(-20), stamp(-16), stamp(-16), "realizada", stamp(-14), "Plan Crecimiento", 90000, "USD", "open", null, null, stamp(-22, 9), ""],
+    ["Dr. Nicolas Ferrer", "Odontología Ferrer", "Odontología", "nico@ejemplo.com", "+5491100000002", "meta_ads", day(-18), closerId, setterId, closerId, "reunion_realizada", "Enviar propuesta", day(0), stamp(-18, 11), stamp(-17), stamp(-15), stamp(-9), stamp(-9), "realizada", null, "Plan Inicial", 60000, "USD", "open", null, null, stamp(-18, 10), ""],
+    ["Clínica Norte", "Clínica Norte", "Multiespecialidad", "info@ejemplo.com", "+5491100000003", "referido", day(-12), setterId, setterId, closerId, "reunion_agendada", "Confirmar asistencia", day(2), stamp(-12, 14), stamp(-11), stamp(-8), stamp(3), null, "agendada", null, "Plan Crecimiento", 120000, "USD", "open", null, null, stamp(-12, 13), ""],
+    ["Dra. Luciana Paz", "Consultorio Paz", "Nutrición", "luciana@ejemplo.com", "+5491100000004", "instagram_ads", day(-9), setterId, setterId, null, "calificado", "Ofrecer horarios de reunión", day(1), stamp(-9, 12), stamp(-8), null, null, null, "sin_reunion", null, "", 45000, "USD", "open", null, null, stamp(-9, 11), ""],
+    ["Dr. Ramiro Cano", "Traumatología Cano", "Traumatología", "ramiro@ejemplo.com", "+5491100000005", "meta_ads", day(-6), setterId, setterId, null, "contactado", "Segundo intento por WhatsApp", day(0), stamp(-5), null, null, null, null, "sin_reunion", null, "", 0, "USD", "open", null, null, stamp(-6, 9), ""],
+    ["Centro Visión Sur", "Centro Visión Sur", "Oftalmología", "contacto@ejemplo.com", "", "meta_ads", day(-3), setterId, setterId, null, "nuevo", "Primer contacto", day(0), null, null, null, null, null, "sin_reunion", null, "", 0, "USD", "open", null, null, stamp(-3, 16), ""],
+    ["Dr. Julian Costa", "Kinesiología Costa", "Kinesiología", "julian@ejemplo.com", "", "google_ads", day(-25), closerId, setterId, closerId, "perdido", "Sin acción", day(-5), stamp(-25, 10), stamp(-24), stamp(-23), stamp(-19), null, "no_show", null, "", 50000, "USD", "lost", "No-show repetido, no volvio a responder", stamp(-15), stamp(-25, 9), ""],
   ];
-  for (const row of demoLeads) insertLead.run(...(row as never[]));
+  for (const row of demoLeads) insertLead.run(...row);
 
   // Un cliente ganado, con su oportunidad asociada
   const clientInfo = db
@@ -220,11 +217,11 @@ function seedDemo() {
        vendor, client_id, direct_cost, status, platform, campaign)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   );
-  insertExpense.run("Campana Meta - captacion", "paid_media", 60000, "USD", day(-20), "variable", "recurrente", "Meta", null, 0, "pagado", "meta", "captacion-agosto");
-  insertExpense.run("Campana Meta - remarketing", "paid_media", 25000, "USD", day(-8), "variable", "recurrente", "Meta", null, 0, "pagado", "meta", "remarketing");
+  insertExpense.run("Campaña Meta - captación", "paid_media", 60000, "USD", day(-20), "variable", "recurrente", "Meta", null, 0, "pagado", "meta", "captacion-agosto");
+  insertExpense.run("Campaña Meta - remarketing", "paid_media", 25000, "USD", day(-8), "variable", "recurrente", "Meta", null, 0, "pagado", "meta", "remarketing");
   insertExpense.run("Hosting y dominios", "infraestructura", 4500, "USD", day(-15), "fijo", "recurrente", "Vercel", null, 0, "pagado", "", "");
   insertExpense.run("Suite de software", "software", 9000, "USD", day(-15), "fijo", "recurrente", "Varios", null, 0, "pagado", "", "");
-  insertExpense.run("Gestion de campanas cliente", "desarrollo", 20000, "USD", day(-10), "variable", "no_recurrente", "Equipo", clientId, 1, "pagado", "", "");
+  insertExpense.run("Gestión de campañas cliente", "desarrollo", 20000, "USD", day(-10), "variable", "no_recurrente", "Equipo", clientId, 1, "pagado", "", "");
   insertExpense.run("Contador", "contable", 60000, "ARS", day(-12), "fijo", "recurrente", "Estudio contable", null, 0, "pagado", "", "");
 
   db.prepare(
@@ -240,9 +237,9 @@ function seedDemo() {
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   );
   insertTask.run("Landing Instituto Salud Integral", "", "landing", devId, clientId, "hecho", "alta", day(-30), day(-31), "", "", null, null);
-  insertTask.run("Automatizacion de reportes", "", "proyecto", devId, null, "en_curso", "media", day(6), null, "", "", null, null);
-  insertTask.run("Correccion de formulario", "", "correccion", devId, clientId, "pendiente", "alta", day(-1), null, "", "", null, null);
-  insertTask.run("Post caso de exito", "", "contenido", dirId, null, "hecho", "media", day(-4), day(-4), "", "linkedin_netflow", day(-4), day(-4));
+  insertTask.run("Automatización de reportes", "", "proyecto", devId, null, "en_curso", "media", day(6), null, "", "", null, null);
+  insertTask.run("Corrección de formulario", "", "correccion", devId, clientId, "pendiente", "alta", day(-1), null, "", "", null, null);
+  insertTask.run("Post caso de éxito", "", "contenido", dirId, null, "hecho", "media", day(-4), day(-4), "", "linkedin_netflow", day(-4), day(-4));
   insertTask.run("Post metodo NetFlow", "", "contenido", dirId, null, "pendiente", "media", day(3), null, "", "linkedin_facundo", day(3), null);
   insertTask.run("Documentar proceso de setting", "", "proceso", dirId, null, "en_curso", "media", day(10), null, "", "", null, null);
 
@@ -255,14 +252,14 @@ function seedDemo() {
 
   db.prepare(
     "INSERT INTO announcements (title, body, level, author_id, starts_at) VALUES (?,?,?,?,?)",
-  ).run("Reunion de equipo los lunes 10 h", "Revisamos objetivos del mes y cuello de botella.", "info", dirId, day(-2));
+  ).run("Reunión de equipo los lunes 10 h", "Revisamos objetivos del mes y cuello de botella.", "info", dirId, day(-2));
 }
 
 const counts = {
-  usuarios: (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n,
-  objetivos: (db.prepare("SELECT COUNT(*) AS n FROM objectives").get() as { n: number }).n,
-  oportunidades: (db.prepare("SELECT COUNT(*) AS n FROM leads").get() as { n: number }).n,
-  clientes: (db.prepare("SELECT COUNT(*) AS n FROM clients").get() as { n: number }).n,
+  usuarios: db.prepare("SELECT COUNT(*) AS n FROM users").get().n,
+  objetivos: db.prepare("SELECT COUNT(*) AS n FROM objectives").get().n,
+  oportunidades: db.prepare("SELECT COUNT(*) AS n FROM leads").get().n,
+  clientes: db.prepare("SELECT COUNT(*) AS n FROM clients").get().n,
 };
 
 console.log(`Base lista en ${dbPath}`);
@@ -273,7 +270,7 @@ console.log(`  clientes:      ${counts.clientes}`);
 console.log("");
 console.log(`Ingresar con: ${adminEmail}`);
 if (!process.env.SEED_ADMIN_PASSWORD) {
-  console.log(`Contrasena por defecto: ${adminPassword}  <-- cambiarla en Ajustes despues del primer login`);
+  console.log(`Contraseña por defecto: ${adminPassword}  <-- cambiarla en Ajustes después del primer login`);
 }
 if (!DEMO) {
   console.log("");

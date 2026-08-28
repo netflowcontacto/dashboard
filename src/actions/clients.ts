@@ -16,8 +16,8 @@ const HEALTH = ["bien", "atencion", "riesgo"] as const;
 
 export async function saveClient(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
-  // Editar la ficha comercial de un cliente (fee, cobro) es informacion
-  // sensible: solo direccion.
+  // Editar la ficha comercial de un cliente (fee, cobro) es información
+  // sensible: solo dirección.
   if (!can(user, "clientes:ver_fees")) {
     return { error: "No tenes permiso para editar la ficha comercial del cliente." };
   }
@@ -87,7 +87,7 @@ export async function saveClient(_prev: ActionState, fd: FormData): Promise<Acti
 
 /**
  * El semaforo y el estado de onboarding los puede mover cualquiera del equipo:
- * son informacion operativa, no financiera. Es lo que mantiene la ficha viva.
+ * son información operativa, no financiera. Es lo que mantiene la ficha viva.
  */
 export async function setAccountHealth(fd: FormData): Promise<void> {
   const user = await requireUser();
@@ -114,7 +114,7 @@ export async function setAccountHealth(fd: FormData): Promise<void> {
 
 export async function saveInvoice(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
-  if (!can(user, "finanzas:cargar")) return { error: "Solo direccion puede cargar facturacion." };
+  if (!can(user, "finanzas:cargar")) return { error: "Solo dirección puede cargar facturación." };
 
   try {
     const clientId = F.optInt(fd, "client_id");

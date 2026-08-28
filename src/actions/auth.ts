@@ -16,16 +16,16 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const password = String(formData.get("password") ?? "");
 
   if (!email || !password) {
-    return { error: "Ingresa email y contrasena." };
+    return { error: "Ingresa email y contraseña." };
   }
 
   const user = getDb()
     .prepare("SELECT id, password_hash, role, active FROM users WHERE lower(email) = ?")
     .get(email) as { id: number; password_hash: string; role: Role; active: number } | undefined;
 
-  // Mensaje generico a proposito: no revelamos si el email existe.
+  // Mensaje generico a propósito: no revelamos si el email existe.
   if (!user || user.active !== 1 || !verifyPassword(password, user.password_hash)) {
-    return { error: "Email o contrasena incorrectos." };
+    return { error: "Email o contraseña incorrectos." };
   }
 
   await createSession(user.id);

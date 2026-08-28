@@ -12,9 +12,9 @@ const CATEGORIES: [string, string][] = [
   ["proyecto", "Proyecto"],
   ["landing", "Landing"],
   ["incidencia", "Incidencia"],
-  ["correccion", "Correccion"],
+  ["correccion", "Corrección"],
   ["contenido", "Pieza de contenido"],
-  ["proceso", "Proceso de gestion"],
+  ["proceso", "Proceso de gestión"],
 ];
 
 const CHANNELS: [string, string][] = [
@@ -119,7 +119,7 @@ export default function TaskForm({
             <Field label="Fecha planificada">
               <input className="field" type="date" name="planned_date" />
             </Field>
-            <Field label="Fecha de publicacion">
+            <Field label="Fecha de publicación">
               <input className="field" type="date" name="published_at" />
             </Field>
           </>
@@ -132,7 +132,7 @@ export default function TaskForm({
         )}
       </div>
 
-      <Field label="Descripcion">
+      <Field label="Descripción">
         <textarea className="field" name="description" rows={2} />
       </Field>
 

@@ -5,22 +5,22 @@ import type { DateRange } from "../dates";
 import type { Area, Currency } from "../types";
 
 /**
- * Registro unico de metricas de NetFlow.
+ * Registro único de métricas de NetFlow.
  *
- * Toda metrica se define UNA sola vez aca y la consumen por igual:
+ * Toda métrica se define UNA sola vez acá y la consumen por igual:
  *   - las barras de resultado individual (equipo)
  *   - los objetivos (objetivo vs resultado)
- *   - el resumen de direccion
+ *   - el resumen de dirección
  *
  * Esto es lo que evita que "reuniones realizadas" signifique una cosa en el
  * panel de Facundo y otra distinta en el funnel.
  *
- * `value` se devuelve siempre en unidades de presentacion:
- *   numero -> cantidad | porcentaje -> 0..100 | moneda -> unidades de la
+ * `value` se devuelve siempre en unidades de presentación:
+ *   número -> cantidad | porcentaje -> 0..100 | moneda -> unidades de la
  *   moneda base (no centavos) | horas -> horas.
  */
 
-export type MetricUnit = "numero" | "porcentaje" | "moneda" | "horas";
+export type MetricUnit = "número" | "porcentaje" | "moneda" | "horas";
 
 export interface MetricContext {
   range: DateRange;
@@ -32,7 +32,7 @@ export interface MetricDef {
   key: string;
   label: string;
   unit: MetricUnit;
-  /** Area a la que pertenece la metrica. 'empresa' = transversal. */
+  /** Area a la que pertenece la métrica. 'empresa' = transversal. */
   scope: Area | "empresa";
   /** Cuando es false, un valor mas bajo es mejor (ej: tiempo de respuesta, CPL). */
   higherIsBetter: boolean;
@@ -81,13 +81,13 @@ function paidSourceFilter(): { sql: string; params: string[] } {
   return { sql: ` AND source IN (${sources.map(() => "?").join(",")})`, params: sources };
 }
 
-// --- metricas comerciales --------------------------------------------------
+// --- métricas comerciales --------------------------------------------------
 
 const commercial: MetricDef[] = [
   {
     key: "reuniones_realizadas",
     label: "Reuniones realizadas",
-    unit: "numero",
+    unit: "número",
     scope: "closer",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -102,7 +102,7 @@ const commercial: MetricDef[] = [
   {
     key: "propuestas",
     label: "Propuestas enviadas",
-    unit: "numero",
+    unit: "número",
     scope: "closer",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -117,7 +117,7 @@ const commercial: MetricDef[] = [
   {
     key: "cierres",
     label: "Cierres",
-    unit: "numero",
+    unit: "número",
     scope: "closer",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -135,7 +135,7 @@ const commercial: MetricDef[] = [
     unit: "porcentaje",
     scope: "closer",
     higherIsBetter: true,
-    help: "Cierres sobre reuniones realizadas en el periodo.",
+    help: "Cierres sobre reuniones realizadas en el período.",
     compute: (ctx) => {
       const cierres = byKey("cierres").compute(ctx) ?? 0;
       const reuniones = byKey("reuniones_realizadas").compute(ctx) ?? 0;
@@ -148,7 +148,7 @@ const commercial: MetricDef[] = [
     unit: "moneda",
     scope: "closer",
     higherIsBetter: true,
-    help: "Fee mensual de los clientes dados de alta en el periodo.",
+    help: "Fee mensual de los clientes dados de alta en el período.",
     compute: ({ range, userIds }) => {
       const f = userFilter("l.closer_id", userIds);
       const rows = db()
@@ -164,13 +164,13 @@ const commercial: MetricDef[] = [
   },
 ];
 
-// --- metricas de setter ----------------------------------------------------
+// --- métricas de setter ----------------------------------------------------
 
 const setter: MetricDef[] = [
   {
     key: "leads_recibidos",
     label: "Leads recibidos",
-    unit: "numero",
+    unit: "número",
     scope: "setter",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -184,7 +184,7 @@ const setter: MetricDef[] = [
   {
     key: "leads_contactados",
     label: "Leads contactados",
-    unit: "numero",
+    unit: "número",
     scope: "setter",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -220,7 +220,7 @@ const setter: MetricDef[] = [
   {
     key: "leads_calificados",
     label: "Leads calificados",
-    unit: "numero",
+    unit: "número",
     scope: "setter",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -235,7 +235,7 @@ const setter: MetricDef[] = [
   {
     key: "reuniones_agendadas",
     label: "Reuniones agendadas",
-    unit: "numero",
+    unit: "número",
     scope: "setter",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -271,7 +271,7 @@ const setter: MetricDef[] = [
   {
     key: "follow_ups",
     label: "Follow-ups",
-    unit: "numero",
+    unit: "número",
     scope: "setter",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -286,7 +286,7 @@ const setter: MetricDef[] = [
   {
     key: "recuperaciones",
     label: "Recuperaciones de no-show",
-    unit: "numero",
+    unit: "número",
     scope: "setter",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -301,16 +301,16 @@ const setter: MetricDef[] = [
   },
 ];
 
-// --- metricas de paid media ------------------------------------------------
+// --- métricas de paid media ------------------------------------------------
 
 const paidMedia: MetricDef[] = [
   {
-    key: "inversion",
-    label: "Inversion publicitaria",
+    key: "inversión",
+    label: "Inversión publicitaria",
     unit: "moneda",
     scope: "paid_media",
     higherIsBetter: true,
-    help: "Gastos de categoria Paid Media en el periodo. Fuente unica compartida con Finanzas.",
+    help: "Gastos de categoría Paid Media en el período. Fuente única compartida con Finanzas.",
     compute: ({ range }) => {
       const rows = db()
         .prepare(
@@ -324,7 +324,7 @@ const paidMedia: MetricDef[] = [
   {
     key: "leads_pauta",
     label: "Leads de pauta",
-    unit: "numero",
+    unit: "número",
     scope: "paid_media",
     higherIsBetter: true,
     compute: ({ range }) => {
@@ -341,17 +341,17 @@ const paidMedia: MetricDef[] = [
     unit: "moneda",
     scope: "paid_media",
     higherIsBetter: false,
-    help: "Inversion dividida por leads de pauta.",
+    help: "Inversión dividida por leads de pauta.",
     compute: (ctx) => {
-      const inversion = byKey("inversion").compute(ctx) ?? 0;
+      const inversión = byKey("inversión").compute(ctx) ?? 0;
       const leads = byKey("leads_pauta").compute(ctx) ?? 0;
-      return leads > 0 ? inversion / leads : null;
+      return leads > 0 ? inversión / leads : null;
     },
   },
   {
     key: "leads_calificados_pauta",
     label: "Leads calificados de pauta",
-    unit: "numero",
+    unit: "número",
     scope: "paid_media",
     higherIsBetter: true,
     compute: ({ range }) => {
@@ -366,7 +366,7 @@ const paidMedia: MetricDef[] = [
   {
     key: "creativos_tests",
     label: "Creativos y tests",
-    unit: "numero",
+    unit: "número",
     scope: "paid_media",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -380,10 +380,10 @@ const paidMedia: MetricDef[] = [
   {
     key: "reuniones_generadas_pauta",
     label: "Reuniones generadas por pauta",
-    unit: "numero",
+    unit: "número",
     scope: "paid_media",
     higherIsBetter: true,
-    help: "Contribucion de paid media a la agenda comercial.",
+    help: "Contribución de paid media a la agenda comercial.",
     compute: ({ range }) => {
       const s = paidSourceFilter();
       return count(
@@ -395,13 +395,13 @@ const paidMedia: MetricDef[] = [
   },
 ];
 
-// --- metricas de desarrollo ------------------------------------------------
+// --- métricas de desarrollo ------------------------------------------------
 
 const desarrollo: MetricDef[] = [
   {
     key: "proyectos_asignados",
     label: "Proyectos asignados",
-    unit: "numero",
+    unit: "número",
     scope: "desarrollo",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -417,7 +417,7 @@ const desarrollo: MetricDef[] = [
   {
     key: "proyectos_terminados",
     label: "Proyectos terminados",
-    unit: "numero",
+    unit: "número",
     scope: "desarrollo",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -436,7 +436,7 @@ const desarrollo: MetricDef[] = [
     unit: "porcentaje",
     scope: "desarrollo",
     higherIsBetter: true,
-    help: "De lo entregado en el periodo, cuanto llego antes de su fecha comprometida.",
+    help: "De lo entregado en el período, cuánto llego antes de su fecha comprometida.",
     compute: ({ range, userIds }) => {
       const f = userFilter("assignee_id", userIds);
       const row = db()
@@ -453,7 +453,7 @@ const desarrollo: MetricDef[] = [
   {
     key: "landings_activas",
     label: "Landings activas",
-    unit: "numero",
+    unit: "número",
     scope: "desarrollo",
     higherIsBetter: true,
     compute: ({ range }) =>
@@ -466,7 +466,7 @@ const desarrollo: MetricDef[] = [
   {
     key: "pendientes",
     label: "Pendientes abiertos",
-    unit: "numero",
+    unit: "número",
     scope: "desarrollo",
     higherIsBetter: false,
     compute: ({ userIds }) => {
@@ -482,7 +482,7 @@ const desarrollo: MetricDef[] = [
   {
     key: "incidencias",
     label: "Correcciones e incidencias",
-    unit: "numero",
+    unit: "número",
     scope: "desarrollo",
     higherIsBetter: false,
     compute: ({ range, userIds }) => {
@@ -497,13 +497,13 @@ const desarrollo: MetricDef[] = [
   },
 ];
 
-// --- metricas de direccion / gestion ---------------------------------------
+// --- métricas de dirección / gestión ---------------------------------------
 
 const direccion: MetricDef[] = [
   {
     key: "piezas_planificadas",
     label: "Piezas planificadas",
-    unit: "numero",
+    unit: "número",
     scope: "direccion",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -518,7 +518,7 @@ const direccion: MetricDef[] = [
   {
     key: "piezas_publicadas",
     label: "Piezas publicadas",
-    unit: "numero",
+    unit: "número",
     scope: "direccion",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -536,7 +536,7 @@ const direccion: MetricDef[] = [
     unit: "porcentaje",
     scope: "direccion",
     higherIsBetter: true,
-    help: "Piezas publicadas sobre piezas planificadas en el periodo.",
+    help: "Piezas publicadas sobre piezas planificadas en el período.",
     compute: (ctx) => {
       const publicadas = byKey("piezas_publicadas").compute(ctx) ?? 0;
       const planificadas = byKey("piezas_planificadas").compute(ctx) ?? 0;
@@ -546,7 +546,7 @@ const direccion: MetricDef[] = [
   {
     key: "linkedin_netflow",
     label: "LinkedIn NetFlow",
-    unit: "numero",
+    unit: "número",
     scope: "direccion",
     higherIsBetter: true,
     compute: ({ range }) =>
@@ -560,7 +560,7 @@ const direccion: MetricDef[] = [
   {
     key: "linkedin_facundo",
     label: "LinkedIn Facundo",
-    unit: "numero",
+    unit: "número",
     scope: "direccion",
     higherIsBetter: true,
     compute: ({ range }) =>
@@ -577,7 +577,7 @@ const direccion: MetricDef[] = [
     unit: "porcentaje",
     scope: "direccion",
     higherIsBetter: true,
-    help: "Oportunidades abiertas con responsable, proxima accion y fecha no vencida.",
+    help: "Oportunidades abiertas con responsable, próxima acción y fecha no vencida.",
     compute: ({ range }) => {
       const row = db()
         .prepare(
@@ -593,8 +593,8 @@ const direccion: MetricDef[] = [
   },
   {
     key: "procesos_abiertos",
-    label: "Procesos de gestion abiertos",
-    unit: "numero",
+    label: "Procesos de gestión abiertos",
+    unit: "número",
     scope: "direccion",
     higherIsBetter: false,
     compute: ({ userIds }) => {
@@ -608,8 +608,8 @@ const direccion: MetricDef[] = [
   },
   {
     key: "procesos_completados",
-    label: "Procesos de gestion completados",
-    unit: "numero",
+    label: "Procesos de gestión completados",
+    unit: "número",
     scope: "direccion",
     higherIsBetter: true,
     compute: ({ range, userIds }) => {
@@ -624,13 +624,13 @@ const direccion: MetricDef[] = [
   },
 ];
 
-// --- metricas de empresa ---------------------------------------------------
+// --- métricas de empresa ---------------------------------------------------
 
 const empresa: MetricDef[] = [
   {
     key: "clientes_nuevos",
     label: "Clientes nuevos",
-    unit: "numero",
+    unit: "número",
     scope: "empresa",
     higherIsBetter: true,
     compute: ({ range }) =>
@@ -642,7 +642,7 @@ const empresa: MetricDef[] = [
   {
     key: "clientes_activos",
     label: "Clientes activos",
-    unit: "numero",
+    unit: "número",
     scope: "empresa",
     higherIsBetter: true,
     compute: ({ range }) =>
@@ -655,7 +655,7 @@ const empresa: MetricDef[] = [
   {
     key: "leads_totales",
     label: "Leads totales",
-    unit: "numero",
+    unit: "número",
     scope: "empresa",
     higherIsBetter: true,
     compute: ({ range }) =>
@@ -679,7 +679,7 @@ const empresa: MetricDef[] = [
   },
   {
     key: "ingresos_cobrados",
-    label: "Facturacion cobrada",
+    label: "Facturación cobrada",
     unit: "moneda",
     scope: "empresa",
     higherIsBetter: true,
@@ -696,7 +696,7 @@ const empresa: MetricDef[] = [
   {
     key: "churn_clientes",
     label: "Bajas de clientes",
-    unit: "numero",
+    unit: "número",
     scope: "empresa",
     higherIsBetter: false,
     compute: ({ range }) =>
@@ -717,7 +717,7 @@ const INDEX = new Map(METRICS.map((m) => [m.key, m]));
 
 export function byKey(key: string): MetricDef {
   const def = INDEX.get(key);
-  if (!def) throw new Error(`Metrica desconocida: ${key}`);
+  if (!def) throw new Error(`Métrica desconocida: ${key}`);
   return def;
 }
 

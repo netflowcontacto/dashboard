@@ -5,7 +5,8 @@ build/
 *.tsbuildinfo
 next-env.d.ts
 
-# Base de datos local (no versionar: contiene datos reales de NetFlow)
+# Base de datos y respaldos (no versionar: contienen datos reales de NetFlow)
+backups/
 data/*.db
 data/*.db-journal
 data/*.db-wal
@@ -18,3 +19,4 @@ data/*.db-shm
 .DS_Store
 *.log
 npm-debug.log*
+

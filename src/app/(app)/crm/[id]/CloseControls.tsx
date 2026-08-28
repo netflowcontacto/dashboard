@@ -17,7 +17,7 @@ function Submit({ label, tone = "primary" }: { label: string; tone?: "primary" |
   );
 }
 
-/** Registrar un follow-up y, de paso, reprogramar la proxima accion. */
+/** Registrar un follow-up y, de paso, reprogramar la próxima acción. */
 export function FollowUpForm({ leadId, today }: { leadId: number; today: string }) {
   return (
     <form action={logFollowUp} className="space-y-3">
@@ -26,7 +26,7 @@ export function FollowUpForm({ leadId, today }: { leadId: number; today: string 
         <input className="field" name="detail" placeholder="Ej: segundo mensaje por WhatsApp" required />
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Proxima accion">
+        <Field label="Próxima acción">
           <input className="field" name="next_action" placeholder="Ej: llamar el lunes" />
         </Field>
         <Field label="Fecha">
@@ -65,7 +65,7 @@ export function CloseWonForm({
       <SuccessBanner message={state.ok} />
       <input type="hidden" name="id" value={lead.id} />
       <p className="text-xs text-muted">
-        Al cerrar se da de alta el cliente automaticamente. Asi nunca queda una venta ganada sin cliente
+        Al cerrar se da de alta el cliente automáticamente. Así nunca queda una venta ganada sin cliente
         cargado, que es lo que rompe el MRR y el CAC.
       </p>
       <Field label="Nombre del cliente" required>
@@ -93,7 +93,7 @@ export function CloseWonForm({
             <option value="ARS">ARS</option>
           </select>
         </Field>
-        <Field label="Proximo cobro">
+        <Field label="Próximo cobro">
           <input className="field" type="date" name="next_charge_date" />
         </Field>
         <Field label="Responsable Paid Media">
@@ -159,7 +159,7 @@ export function ReopenForm({ leadId, today }: { leadId: number; today: string })
     <form action={reopenLead} className="space-y-3">
       <input type="hidden" name="id" value={leadId} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Proxima accion">
+        <Field label="Próxima acción">
           <input className="field" name="next_action" defaultValue="Retomar contacto" />
         </Field>
         <Field label="Fecha">

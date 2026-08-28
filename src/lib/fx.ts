@@ -4,11 +4,11 @@ import { convert, type Money } from "./money";
 import type { Currency } from "./types";
 
 /**
- * Tipo de cambio y moneda de consolidacion, leidos de la configuracion.
+ * Tipo de cambio y moneda de consolidación, leidos de la configuración.
  *
  * NetFlow opera en ARS y USD. Los importes se guardan en su moneda original;
  * esto solo decide como se suman para mostrar un total. Cambiar el tipo de
- * cambio no modifica ningun dato cargado.
+ * cambio no modifica ningún dato cargado.
  *
  * Modulo solo-servidor: lee de la base. Para formatear en el cliente,
  * usar `@/lib/money`.
