@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   NetFlow — tokens de diseno
+   Un solo lugar donde vive la paleta. Todo el dashboard la consume.
+   ========================================================================== */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e2e6ec;
+  --text: #10151c;
+  --muted: #5d6b7d;
+  --faint: #8b98a9;
+
+  --brand: #1d4ed8;
+  --brand-soft: #e8efff;
+
+  --ok: #067a55;
+  --ok-soft: #e2f6ee;
+  --warn: #a35b00;
+  --warn-soft: #fdf0dc;
+  --risk: #c0293c;
+  --risk-soft: #fdeaed;
+  --info: #4b5563;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c232c;
+    --border: #2a313b;
+    --text: #e8edf3;
+    --muted: #9aa7b6;
+    --faint: #6f7d8d;
+
+    --brand: #6b9cff;
+    --brand-soft: #17233d;
+
+    --ok: #46c99b;
+    --ok-soft: #11291f;
+    --warn: #e0a24a;
+    --warn-soft: #2b2110;
+    --risk: #f2748a;
+    --risk-soft: #2e161b;
+    --info: #9aa7b6;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-risk: var(--risk);
+  --color-risk-soft: var(--risk-soft);
+}
+
+@layer base {
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input, select, textarea, button { font: inherit; color: inherit; }
+}
+
+@layer components {
+  /* Numeros tabulares: las columnas de metricas quedan alineadas */
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .field {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.875rem;
+    outline: none;
+  }
+  .field:focus { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
+  .field[aria-invalid="true"] { border-color: var(--risk); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.4rem; justify-content: center;
+    border-radius: 0.5rem; padding: 0.5rem 0.85rem;
+    font-size: 0.875rem; font-weight: 500; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn-primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn-primary:hover { background: color-mix(in srgb, var(--brand) 88%, black); }
+  .btn-danger { color: var(--risk); border-color: color-mix(in srgb, var(--risk) 40%, var(--border)); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  table.nf { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  table.nf th {
+    text-align: left; font-weight: 600; font-size: 0.72rem; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--faint);
+    padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.nf td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.nf tbody tr:hover { background: var(--surface-2); }
+  table.nf tbody tr:last-child td { border-bottom: 0; }
+
+  .scroll-x { overflow-x: auto; }
+}
