@@ -565,7 +565,14 @@ CREATE TABLE IF NOT EXISTS ad_insights_daily (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_insights_unico
   ON ad_insights_daily(campaign_id, date, level, COALESCE(ad_set_id, 0), COALESCE(ad_id, 0));
 CREATE INDEX IF NOT EXISTS idx_insights_client ON ad_insights_daily(client_id, date);
+
+-- Postgres NO indexa el lado hijo de una clave foránea. Sin estos índices,
+-- borrar un ad set, un anuncio, un paciente o una cuenta publicitaria obliga a
+-- recorrer entera la tabla hija —con lock— para resolver el CASCADE o el SET
+-- NULL. Son además las columnas por las que filtra el drill down hasta la
+-- creatividad.
 CREATE INDEX IF NOT EXISTS idx_insights_ad     ON ad_insights_daily(ad_id, date);
+CREATE INDEX IF NOT EXISTS idx_insights_ad_set ON ad_insights_daily(ad_set_id);
 
 -- Para cada campaña y día, el nivel más fino cargado. Es lo único que deberían
 -- consultar las métricas de inversión.
@@ -679,6 +686,7 @@ CREATE INDEX IF NOT EXISTS idx_client_leads_camp    ON client_leads(campaign_id)
 CREATE INDEX IF NOT EXISTS idx_client_leads_next    ON client_leads(next_action_date);
 CREATE INDEX IF NOT EXISTS idx_client_leads_entered ON client_leads(entered_at);
 CREATE INDEX IF NOT EXISTS idx_client_leads_owner   ON client_leads(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_client_leads_adset   ON client_leads(ad_set_id);
 
 CREATE TABLE IF NOT EXISTS client_lead_events (
   id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -721,6 +729,9 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS health_breakdown    TEXT NOT NULL D
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS campaign_id    INTEGER REFERENCES campaigns(id) ON DELETE SET NULL;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ad_id          INTEGER REFERENCES ads(id) ON DELETE SET NULL;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_lead_id INTEGER REFERENCES client_leads(id) ON DELETE SET NULL;
-CREATE INDEX IF NOT EXISTS idx_tasks_campaign ON tasks(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_campaign    ON tasks(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_ad          ON tasks(ad_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_client_lead ON tasks(client_lead_id);
 
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS ad_account_id INTEGER REFERENCES ad_accounts(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_expenses_ad_acct ON expenses(ad_account_id);

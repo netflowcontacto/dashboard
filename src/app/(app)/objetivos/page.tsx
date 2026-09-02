@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth";
+import { one } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { monthOf, todayISO, formatPeriod, plural } from "@/lib/dates";
 import {
@@ -9,6 +10,7 @@ import { selectableMetrics } from "@/lib/metrics/registry";
 import { loadFx } from "@/lib/fx";
 import { AREA_LABEL, type Area, type Currency } from "@/lib/types";
 import { Badge, Card, EmptyState, PageHeader, ProgressBar, StatCard, formatMetric, formatPct } from "@/components/ui";
+import { copyObjectives } from "@/actions/objectives";
 import ObjectiveForm from "./ObjectiveForm";
 import DeleteObjective from "./DeleteObjective";
 
@@ -89,6 +91,23 @@ export default async function ObjetivosPage({
   const elapsed = periodElapsedPct(period, today);
   const daysLeft = daysLeftInPeriod(period, today);
 
+  // Un mes sin objetivos deja sin referencia al Resumen, a Mi panel, a Equipo y
+  // a la barra de progreso de cada persona: todas miden contra el objetivo del
+  // mes. Y pasa solo, cada día 1, sin que nadie haga nada mal — por eso el
+  // aviso aparece acá cuando corresponde en vez de esperar a que alguien se
+  // acuerde de la opción de copiar, que estaba al fondo de la página.
+  const anterior = periodoAnterior(period);
+  const faltanObjetivos = allObjectives.length === 0;
+  const enElAnterior = faltanObjetivos
+    ? Number(
+        (
+          await one<{ n: number }>("SELECT COUNT(*) AS n FROM objectives WHERE period = ?", [
+            anterior,
+          ])
+        )?.n ?? 0,
+      )
+    : 0;
+
   const areas = (
     await Promise.all(
       (Object.keys(AREA_LABEL) as Area[]).map(async (a) => ({
@@ -146,6 +165,26 @@ export default async function ObjetivosPage({
         <StatCard label="Días restantes" value={daysLeft} />
         <StatCard label="Objetivos cargados" value={allObjectives.length} />
       </div>
+
+      {faltanObjetivos && enElAnterior > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn-soft bg-warn-soft px-4 py-3">
+          <p className="max-w-2xl text-sm leading-relaxed text-warn">
+            <strong>{formatPeriod(period)} todavía no tiene objetivos.</strong>{" "}
+            Hasta que los tenga, el Resumen, Mi panel y las barras de cada persona no tienen contra
+            qué medir. En {formatPeriod(anterior)} hay {plural(enElAnterior, "objetivo")}
+            {editar ? " que se pueden copiar tal cual y después ajustar." : "."}
+          </p>
+          {editar && (
+            <form action={copyObjectives}>
+              <input type="hidden" name="from_period" value={anterior} />
+              <input type="hidden" name="to_period" value={period} />
+              <button type="submit" className="btn btn-primary shrink-0">
+                Copiar los de {formatPeriod(anterior)}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
 
       <Card className="mt-4" title="Objetivos de empresa">
         {company.objectives.length === 0 ? (
@@ -229,4 +268,11 @@ export default async function ObjetivosPage({
       )}
     </>
   );
+}
+
+/** El mes anterior a un período 'AAAA-MM'. */
+function periodoAnterior(period: string): string {
+  const [y, m] = period.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 2, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
