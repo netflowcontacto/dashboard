@@ -10,6 +10,9 @@ import * as F from "@/lib/form";
 import { errorMessage, type ActionState } from "@/lib/errors";
 import { STAGES, type Stage } from "@/lib/types";
 
+/** La oportunidad ya estaba cerrada como ganada: no se cierra dos veces. */
+class YaCerrada extends Error {}
+
 const CURRENCIES = ["ARS", "USD"] as const;
 const OUTCOMES = ["open", "won", "lost"] as const;
 
@@ -332,6 +335,21 @@ export async function closeWon(_prev: ActionState, fd: FormData): Promise<Action
     const now = nowStamp();
 
     await tx(async (q) => {
+      // Cerrar como ganada crea un cliente, así que tiene que poder ocurrir una
+      // sola vez. Sin esta guarda, un doble toque antes de que refresque la
+      // pantalla daba de alta dos clientes con el mismo fee y duplicaba el MRR.
+      //
+      // La verificación va DENTRO de la transacción y con bloqueo de fila: si
+      // se hiciera afuera, las dos peticiones de un doble toque podrían leer
+      // "todavía no está cerrada" antes de que cualquiera de las dos escriba.
+      const actual = await q.one<{ outcome: string; client_id: number | null }>(
+        "SELECT outcome, client_id FROM leads WHERE id = ? FOR UPDATE",
+        [id],
+      );
+      if (actual?.outcome === "won" && actual.client_id !== null) {
+        throw new YaCerrada();
+      }
+
       const clientId = await q.insert(
         `INSERT INTO clients (
            name, specialty, plan, fee_cents, fee_currency, start_date, next_charge_date,
@@ -375,6 +393,13 @@ export async function closeWon(_prev: ActionState, fd: FormData): Promise<Action
     revalidatePath(`/crm/${id}`);
     return { ok: "Cliente creado y oportunidad cerrada." };
   } catch (e) {
+    if (e instanceof YaCerrada) {
+      return {
+        error:
+          "Esta oportunidad ya estaba cerrada como ganada y su cliente ya está dado de alta. " +
+          "Recargá la página para verlo. No se creó un cliente duplicado.",
+      };
+    }
     return { error: errorMessage(e) };
   }
 }
@@ -420,12 +445,43 @@ export async function reopenLead(fd: FormData): Promise<void> {
   const nextDate = F.optDate(fd, "next_action_date") ?? todayISO();
   if (!id) return;
 
-  await run(
-    `UPDATE leads SET outcome = 'open', stage = 'follow_up', lost_reason = NULL, closed_at = NULL,
-                      next_action = ?, next_action_date = ?, updated_at = nf_now()
-     WHERE id = ?`,
-    [nextAction, nextDate, id],
+  const previo = await one<{ outcome: string; stage: string; client_id: number | null; cliente: string | null }>(
+    `SELECT l.outcome, l.stage, l.client_id, c.name AS cliente
+       FROM leads l LEFT JOIN clients c ON c.id = l.client_id
+      WHERE l.id = ?`,
+    [id],
   );
+  if (!previo) return;
+
+  await tx(async (q) => {
+    // Se desenlaza el cliente. Sin esto, reabrir una ganada dejaba la
+    // oportunidad abierta pero con su cliente vivo, y al volver a cerrarla se
+    // creaba un SEGUNDO cliente con el mismo fee: MRR duplicado.
+    //
+    // El cliente NO se borra: puede tener facturas y trabajo hecho encima.
+    // Se desata y queda anotado cuál era, para que alguien decida qué hacer
+    // con él desde Clientes.
+    await q.run(
+      `UPDATE leads SET outcome = 'open', stage = 'follow_up', lost_reason = NULL,
+                        closed_at = NULL, client_id = NULL,
+                        next_action = ?, next_action_date = ?, updated_at = nf_now()
+       WHERE id = ?`,
+      [nextAction, nextDate, id],
+    );
+
+    // Reabrir era el único cambio de etapa que no quedaba registrado: la
+    // bitácora mostraba "→ perdido" y después nada.
+    const detalle = previo.client_id
+      ? `Reapertura desde ${previo.outcome === "won" ? "ganada" : "perdida"}. ` +
+        `Se desenlazó el cliente "${previo.cliente ?? previo.client_id}", que sigue dado de alta.`
+      : `Reapertura desde ${previo.outcome === "won" ? "ganada" : "perdida"}.`;
+
+    await q.run(
+      `INSERT INTO lead_events (lead_id, type, from_stage, to_stage, detail, user_id)
+       VALUES (?,?,?,?,?,?)`,
+      [id, "reapertura", previo.stage, "follow_up", detalle, user.id],
+    );
+  });
 
   revalidatePath(`/crm/${id}`);
   revalidatePath("/crm");
