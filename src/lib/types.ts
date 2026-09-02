@@ -121,6 +121,8 @@ export interface Lead {
   lost_reason: string | null;
   notes: string;
   client_id: number | null;
+  /** Sirve de versión: el formulario la manda de vuelta para detectar pisados. */
+  updated_at: string;
 }
 
 export interface Client {

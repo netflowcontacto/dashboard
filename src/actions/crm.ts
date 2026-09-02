@@ -36,6 +36,30 @@ function backfillTimestamps(stage: Stage, current: Record<string, unknown>, now:
   return out;
 }
 
+/**
+ * El estado de la reunión que corresponde a una etapa.
+ *
+ * Sin esto, mover la tarjeta a "Reunión agendada" dejaba `meeting_outcome` en
+ * 'sin_reunion', y de ese campo dependen el show rate del funnel, la métrica
+ * de reuniones realizadas y dos alertas. O sea: arrastrar —que es la forma
+ * cómoda de trabajar— era también la que dejaba ciegas a las métricas.
+ *
+ * Solo completa hacia adelante y nunca pisa una decisión explícita: si alguien
+ * marcó no-show, cancelada o reprogramada, mover la tarjeta no lo borra. Eso
+ * se cambia desde la ficha, que es donde se sabe qué pasó.
+ */
+function meetingOutcomeForStage(stage: Stage, actual: string): string | null {
+  if (["no_show", "cancelada", "reprogramada"].includes(actual)) return null;
+  if (stage === "perdido") return null;
+
+  const idx = STAGES.indexOf(stage);
+
+  // De "reunión realizada" en adelante, la reunión ya ocurrió.
+  if (idx >= STAGES.indexOf("reunion_realizada") && actual !== "realizada") return "realizada";
+  if (stage === "reunion_agendada" && actual === "sin_reunion") return "agendada";
+  return null;
+}
+
 export async function createLead(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
   if (!can(user, "crm:editar")) return { error: "No tenes permiso para editar el CRM." };
@@ -119,7 +143,32 @@ export async function updateLead(_prev: ActionState, fd: FormData): Promise<Acti
     const current = await one<Record<string, unknown>>("SELECT * FROM leads WHERE id = ?", [id]);
     if (!current) return { error: "La oportunidad no existe." };
 
-    const outcome = F.pick(fd, "outcome", OUTCOMES, "open");
+    // Control de concurrencia contra el pisado silencioso.
+    //
+    // El formulario se dibuja con los valores del momento en que se abrió la
+    // ficha, y guarda las veinticinco columnas de una. Si mientras tanto la
+    // bitácora registró una llamada —que escribe próxima acción, etapa y
+    // fecha de contacto—, guardar el formulario devolvía esos campos al valor
+    // viejo sin avisar. Y eso, en la práctica, hace que la gente deje de usar
+    // la bitácora, que es la parte que mejor funciona.
+    //
+    // Se compara la versión que tenía el formulario contra la de la base: si
+    // no coinciden, no se guarda nada y se explica qué pasó.
+    const version = F.optStr(fd, "version");
+    if (version && version !== String(current.updated_at)) {
+      return {
+        error:
+          "Esta oportunidad cambió mientras la tenías abierta —probablemente por un registro en la bitácora—. " +
+          "Recargá la página para ver lo último y volvé a guardar: así no se pierde nada.",
+      };
+    }
+
+    // El resultado NO se toma del formulario. Cerrar tiene consecuencias que
+    // este guardado no cumple —una ganada necesita el cliente dado de alta y
+    // enlazado, una perdida el motivo— y aceptarlo acá dejaba leads "ganados"
+    // sin cliente, que el funnel cuenta igual y rompen el CAC y el MRR nuevo.
+    // Se conserva lo que ya estaba; cerrar y reabrir viven en sus acciones.
+    const outcome = current.outcome as (typeof OUTCOMES)[number];
     const stage = F.pick<Stage>(fd, "stage", STAGES, current.stage as Stage);
     const nextAction = F.optStr(fd, "next_action");
     const nextActionDate = F.optDate(fd, "next_action_date");
@@ -206,24 +255,48 @@ export async function updateLead(_prev: ActionState, fd: FormData): Promise<Acti
   }
 }
 
-/** Mueve una oportunidad de etapa desde el pipeline, sin abrir la ficha. */
-export async function moveStage(fd: FormData): Promise<void> {
+/**
+ * Mueve una oportunidad de etapa desde el pipeline, sin abrir la ficha.
+ *
+ * Devuelve el resultado en vez de cortar en silencio. El tablero mueve la
+ * tarjeta antes de que conteste el servidor —eso es lo que lo hace sentir
+ * instantáneo— y antes solo la devolvía a su lugar si esto lanzaba una
+ * excepción. Cuando la acción se limitaba a un `return`, la tarjeta se quedaba
+ * en la columna nueva y el aviso decía "Movida a X" sin que en la base hubiera
+ * cambiado nada. Una interfaz que afirma un éxito que no ocurrió es peor que
+ * una que falla de frente.
+ */
+export type MoveResult = { ok: true } | { ok: false; error: string };
+
+export async function moveStage(fd: FormData): Promise<MoveResult> {
   const user = await requireUser();
-  if (!can(user, "crm:editar")) return;
+  if (!can(user, "crm:editar")) {
+    return { ok: false, error: "No tenés permiso para mover oportunidades." };
+  }
 
   const id = F.int(fd, "id");
   const stage = F.pick<Stage>(fd, "stage", STAGES, "nuevo");
-  if (!id) return;
+  if (!id) return { ok: false, error: "Oportunidad inválida." };
 
   const current = await one<Record<string, unknown>>("SELECT * FROM leads WHERE id = ?", [id]);
-  if (!current) return;
+  if (!current) return { ok: false, error: "La oportunidad ya no existe." };
 
   // Ganado y perdido se cierran desde la ficha: necesitan cliente o motivo.
-  if (stage === "ganado" || stage === "perdido") return;
+  if (stage === "ganado" || stage === "perdido") {
+    return {
+      ok: false,
+      error: "Cerrar como ganada o perdida se hace desde la ficha: necesita el cliente o el motivo.",
+    };
+  }
 
   const now = nowStamp();
+  const reunion = meetingOutcomeForStage(stage, String(current.meeting_outcome ?? "sin_reunion"));
+
   await tx(async (q) => {
-    await q.run("UPDATE leads SET stage = ?, updated_at = nf_now() WHERE id = ?", [stage, id]);
+    await q.run(
+      "UPDATE leads SET stage = ?, meeting_outcome = COALESCE(?, meeting_outcome), updated_at = nf_now() WHERE id = ?",
+      [stage, reunion, id],
+    );
     await applyTimestamps(id, backfillTimestamps(stage, current, now), q);
     await q.run(
       `INSERT INTO lead_events (lead_id, type, from_stage, to_stage, user_id) VALUES (?,?,?,?,?)`,
@@ -233,6 +306,7 @@ export async function moveStage(fd: FormData): Promise<void> {
 
   revalidatePath("/crm");
   revalidatePath(`/crm/${id}`);
+  return { ok: true };
 }
 
 /**

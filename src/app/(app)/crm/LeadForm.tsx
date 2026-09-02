@@ -12,6 +12,12 @@ const SOURCES = [
   "referido", "linkedin", "outbound", "web", "manychat", "otro",
 ];
 
+const OUTCOME_LABEL: Record<string, string> = {
+  open: "Abierta",
+  won: "Ganada",
+  lost: "Perdida",
+};
+
 const MEETING_OUTCOMES = [
   ["sin_reunion", "Sin reunión"],
   ["agendada", "Agendada"],
@@ -90,7 +96,14 @@ export default function LeadForm({
     <form action={formAction} className="space-y-5">
       <ErrorBanner message={state.error} />
       <SuccessBanner message={state.ok} />
-      {lead && <input type="hidden" name="id" value={lead.id} />}
+      {lead && (
+        <>
+          <input type="hidden" name="id" value={lead.id} />
+          {/* La versión con la que se dibujó el formulario: si cambió mientras
+              tanto, el guardado se rechaza en vez de pisar en silencio. */}
+          <input type="hidden" name="version" value={lead.updated_at} />
+        </>
+      )}
 
       <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">
@@ -188,13 +201,22 @@ export default function LeadForm({
             ))}
           </select>
         </Field>
+        {/*
+          El resultado se muestra pero no se edita acá. Cerrar una oportunidad
+          tiene consecuencias que un select no puede cumplir: una ganada
+          necesita el cliente dado de alta y enlazado —si no, el funnel cuenta
+          un cliente que no existe y rompe el CAC y el MRR nuevo— y una perdida
+          necesita el motivo. Las dos cosas viven en la tarjeta de Cierre, que
+          hace el trabajo completo.
+        */}
         {lead && (
-          <Field label="Resultado">
-            <select className="field" name="outcome" defaultValue={lead.outcome}>
-              <option value="open">Abierta</option>
-              <option value="won">Ganada</option>
-              <option value="lost">Perdida</option>
-            </select>
+          <Field label="Resultado" hint="Se cambia desde la tarjeta de Cierre, a la derecha.">
+            <input
+              className="field"
+              value={OUTCOME_LABEL[lead.outcome] ?? lead.outcome}
+              readOnly
+              disabled
+            />
           </Field>
         )}
       </fieldset>

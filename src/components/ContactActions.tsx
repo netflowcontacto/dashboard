@@ -46,10 +46,21 @@ export default function ContactActions({
     const fd = new FormData();
     fd.set("lead_id", String(leadId));
     fd.set("tipo", tipo);
-    startTransition(() => {
-      void registrarContacto(fd);
+    // El aviso espera al servidor. Antes se disparaba junto con la llamada y
+    // decía "registrado" siempre, aunque el registro fallara: el canal se abre
+    // igual, pero afirmar que quedó anotado cuando no quedó es justo lo que
+    // hace que después nadie confíe en la bitácora.
+    startTransition(async () => {
+      try {
+        await registrarContacto(fd);
+        toast({ message: `${etiqueta} registrado en la bitácora.` });
+      } catch {
+        toast({
+          message: `Se abrió ${etiqueta}, pero no se pudo registrar en la bitácora. Anotalo a mano.`,
+          tone: "error",
+        });
+      }
     });
-    toast({ message: `${etiqueta} registrado en la bitácora.` });
   }
 
   const clase =

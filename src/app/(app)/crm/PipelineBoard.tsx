@@ -82,7 +82,14 @@ export default function PipelineBoard({
 
     startTransition(async () => {
       try {
-        await moveStage(fd);
+        const r = await moveStage(fd);
+        if (!r.ok) {
+          // El servidor no la movió. La tarjeta vuelve y el aviso dice por qué:
+          // dejarla en la columna nueva con un "listo" sería mentir.
+          setLeads((list) => list.map((l) => (l.id === id ? { ...l, stage: origen } : l)));
+          toast({ message: r.error, tone: "error" });
+          return;
+        }
         toast({
           message: `Movida a ${STAGE_LABEL[destino]}.`,
           onUndo: () => {
