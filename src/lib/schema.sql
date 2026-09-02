@@ -569,6 +569,12 @@ CREATE INDEX IF NOT EXISTS idx_insights_ad     ON ad_insights_daily(ad_id, date)
 
 -- Para cada campaña y día, el nivel más fino cargado. Es lo único que deberían
 -- consultar las métricas de inversión.
+-- Las columnas van enumeradas y no como `i.*` a propósito. Este archivo se
+-- ejecuta entero en cada arranque en frío, y CREATE OR REPLACE VIEW falla si
+-- la lista de columnas de la vista cambió de forma. Con `i.*`, renombrar o
+-- reordenar una columna de ad_insights_daily haría fallar el esquema, y como
+-- el esquema se verifica antes de cada consulta, eso no rompe el deploy: rompe
+-- todas las peticiones. Enumeradas, la vista es un contrato estable.
 CREATE OR REPLACE VIEW ad_insights_effective AS
 WITH finura AS (
   SELECT campaign_id, date,
@@ -576,7 +582,9 @@ WITH finura AS (
   FROM ad_insights_daily
   GROUP BY campaign_id, date
 )
-SELECT i.*
+SELECT i.id, i.client_id, i.campaign_id, i.ad_set_id, i.ad_id, i.level, i.date,
+       i.spend_cents, i.currency, i.impressions, i.reach, i.clicks,
+       i.platform_leads, i.source, i.synced_at
 FROM ad_insights_daily i
 JOIN finura f
   ON f.campaign_id = i.campaign_id
