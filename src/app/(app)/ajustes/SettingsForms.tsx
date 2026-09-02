@@ -132,8 +132,19 @@ export function UserForm({ users, currentUserId }: { users: User[]; currentUserI
           <Field label="Nombre" required>
             <input className="field" name="name" required />
           </Field>
-          <Field label="Email" required>
-            <input className="field" type="email" name="email" required />
+          {/* Mismo criterio que el login: el acceso es un nombre de usuario,
+              no una dirección de correo. */}
+          <Field label="Usuario" required hint="Con qué entra a la aplicación. Ej: sofia-netflow.">
+            <input
+              className="field"
+              type="text"
+              name="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="nombre-netflow"
+              required
+            />
           </Field>
           <Field label="Contraseña inicial" required hint="Mínimo 8 caracteres.">
             <input className="field" type="password" name="password" minLength={8} required />

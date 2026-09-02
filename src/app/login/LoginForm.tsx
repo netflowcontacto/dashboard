@@ -20,12 +20,24 @@ export default function LoginForm() {
   return (
     <form action={formAction} className="space-y-3">
       <ErrorBanner message={state.error} />
-      <Field label="Email" required>
+      {/*
+        Es `text` y no `email` a propósito: los accesos son nombres de usuario
+        —facundo-netflow— y no direcciones de correo. Con type="email" el
+        navegador los rechazaba antes de que el formulario llegara a enviarse.
+        `spellCheck` y las mayúsculas automáticas apagadas porque en celular
+        convierten "max-netflow" en "Max-netflow" y el login falla sin decir
+        por qué.
+      */}
+      <Field label="Usuario" required>
         <input
           className="field"
-          type="email"
+          type="text"
           name="email"
           autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="tunombre-netflow"
           required
           autoFocus
         />

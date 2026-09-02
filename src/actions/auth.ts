@@ -16,7 +16,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const password = String(formData.get("password") ?? "");
 
   if (!email || !password) {
-    return { error: "Ingresa email y contraseña." };
+    return { error: "Ingresá usuario y contraseña." };
   }
 
   const user = await one<{ id: number; password_hash: string; role: Role; active: number }>(
@@ -24,9 +24,9 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     [email],
   );
 
-  // Mensaje generico a propósito: no revelamos si el email existe.
+  // Mensaje generico a propósito: no revelamos si el usuario existe.
   if (!user || user.active !== 1 || !verifyPassword(password, user.password_hash)) {
-    return { error: "Email o contraseña incorrectos." };
+    return { error: "Usuario o contraseña incorrectos." };
   }
 
   await createSession(user.id);
