@@ -42,6 +42,10 @@ export const IconTablero = (p: Props) => (
 export const IconLista = (p: Props) => (
   <Svg {...p}><path d="M4 6h16M4 12h16M4 18h16" /></Svg>
 );
+/* Un anuncio: el recuadro de la creatividad y su alcance. */
+export const IconAnuncios = (p: Props) => (
+  <Svg {...p}><rect x="3" y="5" width="13" height="10" rx="2" /><path d="M19 8v8M21.5 6.5v11M6.5 19h6" /></Svg>
+);
 export const IconClientes = (p: Props) => (
   <Svg {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3 20a6 6 0 0 1 12 0M17 11a2.6 2.6 0 1 0 0-5.2M18 20a5 5 0 0 0-2-4" /></Svg>
 );
@@ -140,6 +144,7 @@ export const NAV_ICONS = {
   "/mi-panel": IconPanel,
   "/crm": IconCrm,
   "/clientes": IconClientes,
+  "/anuncios": IconAnuncios,
   "/inversion": IconInversion,
   "/objetivos": IconObjetivos,
   "/tareas": IconTareas,

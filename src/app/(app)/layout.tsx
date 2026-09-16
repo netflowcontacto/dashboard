@@ -27,6 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   items.push({ href: "/crm", label: "CRM", group: "Comercial" });
   items.push({ href: "/clientes", label: "Clientes", group: "Comercial" });
+  items.push({ href: "/anuncios", label: "Anuncios", group: "Comercial" });
 
   items.push({ href: "/objetivos", label: "Objetivos", group: "Operación" });
   items.push({ href: "/tareas", label: "Tareas y proyectos", group: "Operación" });
