@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { resolveRange, plural } from "@/lib/dates";
 import { rendimientoDeAnuncios, type FilaAnuncio, type Nivel } from "@/lib/metrics/anuncios";
 import { CLASE_CREATIVIDAD_LABEL, type ClaseCreatividad } from "@/lib/adquisicion";
@@ -9,6 +9,7 @@ import { clientsList } from "@/lib/queries";
 import { Badge, Card, EmptyState, Note, PageHeader, StatCard, formatPct } from "@/components/ui";
 import RangePicker from "@/components/RangePicker";
 import Filtros from "./Filtros";
+import ImportForm from "./ImportForm";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,8 @@ export default async function AnunciosPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
+  const user = await requireUser();
+  const puedeCargar = can(user, "paid_media:cargar");
   const sp = await searchParams;
 
   const range = resolveRange({
@@ -113,11 +115,10 @@ export default async function AnunciosPage({
         {filas.length === 0 ? (
           <EmptyState
             title="Todavía no hay campañas cargadas"
-            detail="El gasto entra de dos formas: importando el CSV que exporta Meta Ads Manager, o conectando la cuenta publicitaria. Las dos se configuran en Integraciones."
-            action={
-              <Link href="/integraciones" className="btn btn-primary">
-                Ir a Integraciones
-              </Link>
+            detail={
+              puedeCargar
+                ? "El gasto entra importando el informe que exporta Meta Ads Manager. Abajo está el formulario."
+                : "El gasto lo carga Paid Media importando el informe de Meta Ads Manager."
             }
           />
         ) : (
@@ -146,6 +147,16 @@ export default async function AnunciosPage({
           </div>
         )}
       </Card>
+
+      {puedeCargar && (
+        <Card
+          className="mt-4"
+          title="Importar el informe de Meta"
+          subtitle="Sin token ni permisos: se baja el CSV de Ads Manager y se sube."
+        >
+          <ImportForm clientes={clientes.map((c) => ({ id: c.id, name: c.name }))} />
+        </Card>
+      )}
 
       <Note>
         La columna <strong>CPQL</strong> —costo por lead calificado— es la que decide, no el CPL. Cien
