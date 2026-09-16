@@ -85,7 +85,7 @@ export async function importarCsvMeta(
     return { error: errorMessage(e) };
   }
 
-  const { filas, descartadas, nivel } = parseado;
+  const { filas, descartadas, nivel, moneda: monedaReal, monedaDetectada } = parseado;
 
   try {
     const resumen = await tx(async (q) => {
@@ -101,7 +101,7 @@ export async function importarCsvMeta(
           id: await q.insert(
             `INSERT INTO ad_accounts (client_id, platform, name, currency)
              VALUES (?, 'meta', 'Meta Ads', ?) RETURNING id`,
-            [clientId, moneda],
+            [clientId, monedaReal],
           ),
         } as { id: number });
 
@@ -197,8 +197,14 @@ export async function importarCsvMeta(
     revalidatePath("/anuncios");
     revalidatePath("/inversion");
 
+    const comoSupo = monedaDetectada
+      ? "según dice el encabezado del archivo"
+      : "según lo que elegiste — el archivo no lo aclaraba";
+
     return {
-      ok: `Listo: ${resumen.filas} ${resumen.filas === 1 ? "fila" : "filas"} del ${resumen.desde} al ${resumen.hasta}.`,
+      ok:
+        `Listo: ${resumen.filas} ${resumen.filas === 1 ? "fila" : "filas"} del ${resumen.desde} ` +
+        `al ${resumen.hasta}, en ${monedaReal === "USD" ? "dólares" : "pesos"} (${comoSupo}).`,
       detalle: resumen,
       descartadas: descartadas.length > 0 ? descartadas : undefined,
     };

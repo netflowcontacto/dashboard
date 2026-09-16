@@ -58,7 +58,7 @@ export default function ImportForm({ clientes }: { clientes: { id: number; name:
           </select>
         </Field>
 
-        <Field label="Moneda de la cuenta" hint="En la que factura Meta esa cuenta.">
+        <Field label="Moneda de la cuenta" hint="Solo se usa si el archivo no la aclara: normalmente la dice el encabezado.">
           <select className="field" name="moneda" defaultValue="ARS">
             <option value="ARS">Pesos</option>
             <option value="USD">Dólares</option>

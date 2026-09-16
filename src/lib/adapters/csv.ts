@@ -24,7 +24,7 @@ const ALIAS: Record<string, string[]> = {
   adName: ["ad name", "nombre del anuncio", "anuncio"],
   adId: ["ad id", "identificador del anuncio"],
   date: ["day", "date", "día", "dia", "fecha", "reporting starts", "inicio del informe"],
-  spend: ["amount spent", "amount spent (usd)", "importe gastado", "importe gastado (ars)", "gasto", "spend"],
+  spend: ["amount spent", "importe gastado", "importe gasto", "gasto", "spend"],
   impressions: ["impressions", "impresiones"],
   reach: ["reach", "alcance"],
   clicks: ["link clicks", "clicks (all)", "clics en el enlace", "clics (todos)", "clics"],
@@ -67,7 +67,24 @@ function partirLinea(linea: string): string[] {
 
 function indiceDe(encabezados: string[], clave: keyof typeof ALIAS): number {
   const alias = ALIAS[clave].map(normalizar);
-  return encabezados.findIndex((h) => alias.includes(normalizar(h)));
+  const exacto = encabezados.findIndex((h) => alias.includes(normalizar(h)));
+  if (exacto !== -1) return exacto;
+  // La columna del importe viene con la moneda pegada — "Importe gastado (USD)",
+  // "Amount spent (ARS)" — y cambia según la cuenta. Se acepta el prefijo.
+  return encabezados.findIndex((h) => alias.some((a) => normalizar(h).startsWith(a)));
+}
+
+/**
+ * La moneda que declara el encabezado del importe.
+ *
+ * Ads Manager la escribe ahí: "Importe gastado (USD)". Leerla es mucho mejor
+ * que preguntarla, porque equivocarse no se nota: si la cuenta paga en dólares
+ * y alguien deja puesto pesos, el gasto queda mil veces más chico y todas las
+ * métricas de costo mienten sin que nada falle.
+ */
+function monedaDelEncabezado(encabezado: string | undefined): "ARS" | "USD" | null {
+  const m = String(encabezado ?? "").toUpperCase().match(/\b(USD|ARS)\b/);
+  return m ? (m[1] as "ARS" | "USD") : null;
 }
 
 function entero(valor: string | undefined): number {
@@ -81,6 +98,9 @@ export interface ResultadoImportacion {
   descartadas: { linea: number; motivo: string }[];
   /** El nivel más fino que trae el archivo. Define cómo se guarda. */
   nivel: "campaign" | "ad_set" | "ad";
+  moneda: "ARS" | "USD";
+  /** true si salió del encabezado; false si se usó la elegida a mano. */
+  monedaDetectada: boolean;
 }
 
 /**
@@ -121,6 +141,10 @@ export function parsearCsvMeta(texto: string, monedaPorDefecto: "ARS" | "USD"): 
 
   const nivel = idx.adName !== -1 ? "ad" : idx.adSetName !== -1 ? "ad_set" : "campaign";
 
+  // Si el encabezado dice la moneda, gana sobre lo que se haya elegido a mano.
+  const monedaDetectada = monedaDelEncabezado(encabezados[idx.spend]);
+  const moneda = monedaDetectada ?? monedaPorDefecto;
+
   const filas: FilaInsight[] = [];
   const descartadas: { linea: number; motivo: string }[] = [];
 
@@ -148,7 +172,7 @@ export function parsearCsvMeta(texto: string, monedaPorDefecto: "ARS" | "USD"): 
       adName: idx.adName === -1 ? undefined : c[idx.adName],
       date: fecha,
       spendCents: parseAmountToCents(c[idx.spend] ?? "0") ?? 0,
-      currency: monedaPorDefecto,
+      currency: moneda,
       impressions: entero(c[idx.impressions]),
       reach: entero(c[idx.reach]),
       clicks: entero(c[idx.clicks]),
@@ -160,7 +184,7 @@ export function parsearCsvMeta(texto: string, monedaPorDefecto: "ARS" | "USD"): 
     throw new Error("No pude leer ninguna fila. Revisá que el archivo sea el export de Ads Manager.");
   }
 
-  return { filas, descartadas, nivel };
+  return { filas, descartadas, nivel, moneda, monedaDetectada: monedaDetectada !== null };
 }
 
 export const adaptadorCsv: AdaptadorPlataforma = {
