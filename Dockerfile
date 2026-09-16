@@ -19,6 +19,10 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # SESSION_SECRET real se inyecta en runtime; en build solo hace falta que exista.
 ENV SESSION_SECRET=build-time-placeholder-no-se-usa-en-runtime
+# Pide la salida standalone, que es lo que copian las capas de abajo. En
+# Netlify NO se usa: su runtime arma el despliegue por su cuenta y standalone
+# le deja los archivos del navegador donde no los busca.
+ENV BUILD_TARGET=docker
 RUN npm run build
 
 
