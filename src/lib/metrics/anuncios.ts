@@ -36,6 +36,12 @@ export interface FilaAnuncio {
   cpm: number | null;
 
   leads: number;
+  /**
+   * Los "resultados" que reporta la plataforma. No son lo mismo que `leads`:
+   * Meta cuenta la conversación iniciada, el CRM cuenta a la persona cargada.
+   * Se muestran aparte justamente para que la diferencia se vea.
+   */
+  leadsPlataforma: number;
   calificados: number;
   turnos: number;
   asistieron: number;
@@ -139,11 +145,13 @@ export async function rendimientoDeAnuncios(
     cents: number;
     impresiones: number;
     clicks: number;
+    leads_plataforma: number;
   }>(
     `SELECT ${clave} AS id, currency,
-            SUM(spend_cents)  AS cents,
-            SUM(impressions)  AS impresiones,
-            SUM(clicks)       AS clicks
+            SUM(spend_cents)     AS cents,
+            SUM(impressions)     AS impresiones,
+            SUM(clicks)          AS clicks,
+            SUM(platform_leads)  AS leads_plataforma
        FROM ad_insights_effective
       WHERE date BETWEEN ? AND ?${filtroCliente}
       GROUP BY ${clave}, currency`,
@@ -189,20 +197,26 @@ export async function rendimientoDeAnuncios(
            FROM campaigns c JOIN clients cl ON cl.id = c.client_id`,
       );
 
-  const gastoPorId = new Map<number, { inversion: number; impresiones: number; clicks: number }>();
+  const gastoPorId = new Map<
+    number,
+    { inversion: number; impresiones: number; clicks: number; leadsPlataforma: number }
+  >();
   for (const g of gasto) {
     if (g.id === null) continue;
-    const acc = gastoPorId.get(g.id) ?? { inversion: 0, impresiones: 0, clicks: 0 };
+    const acc =
+      gastoPorId.get(g.id) ?? { inversion: 0, impresiones: 0, clicks: 0, leadsPlataforma: 0 };
     acc.inversion += toBase(Number(g.cents), g.currency, fx) / 100;
     acc.impresiones += Number(g.impresiones);
     acc.clicks += Number(g.clicks);
+    acc.leadsPlataforma += Number(g.leads_plataforma ?? 0);
     gastoPorId.set(g.id, acc);
   }
 
   const leadsPorId = new Map(leads.filter((l) => l.id !== null).map((l) => [l.id as number, l]));
 
   const filas: FilaAnuncio[] = nombres.map((n) => {
-    const g = gastoPorId.get(n.id) ?? { inversion: 0, impresiones: 0, clicks: 0 };
+    const g =
+      gastoPorId.get(n.id) ?? { inversion: 0, impresiones: 0, clicks: 0, leadsPlataforma: 0 };
     const l = leadsPorId.get(n.id);
 
     const cantidad = {
@@ -228,6 +242,7 @@ export async function rendimientoDeAnuncios(
       ctr: pct(g.clicks, g.impresiones),
       cpm: g.impresiones > 0 ? (g.inversion / g.impresiones) * 1000 : null,
       ...cantidad,
+      leadsPlataforma: g.leadsPlataforma,
       ingresos,
       cpl: porUnidad(g.inversion, cantidad.leads),
       cpql: porUnidad(g.inversion, cantidad.calificados),
@@ -256,4 +271,33 @@ export async function rendimientoDeAnuncios(
   }
 
   return filas.sort((a, b) => b.inversion - a.inversion);
+}
+
+/**
+ * Qué niveles tiene cargados el período.
+ *
+ * El informe de Meta se puede exportar por anuncio, por conjunto o por
+ * campaña, y el que se baja por defecto viene por campaña. Si la pantalla
+ * abriera siempre "por anuncio", quien cargó un informe de campañas vería
+ * cero y pensaría que la importación falló —no falló: está mirando un nivel
+ * que ese archivo no trae—. Con esto la pantalla abre en el nivel más fino
+ * que haya, y cuando igual queda vacía puede decir por qué.
+ */
+export async function nivelesConDatos(
+  range: DateRange,
+  clientId?: number,
+): Promise<{ anuncio: boolean; campana: boolean }> {
+  const filtroCliente = clientId ? " AND client_id = ?" : "";
+  const params = clientId ? [range.from, range.to, clientId] : [range.from, range.to];
+  const filas = await all<{ hay_anuncio: boolean | null; hay_algo: boolean | null }>(
+    `SELECT bool_or(ad_id IS NOT NULL) AS hay_anuncio,
+            bool_or(TRUE)              AS hay_algo
+       FROM ad_insights_effective
+      WHERE date BETWEEN ? AND ?${filtroCliente}`,
+    params,
+  );
+  return {
+    anuncio: filas[0]?.hay_anuncio === true,
+    campana: filas[0]?.hay_algo === true,
+  };
 }

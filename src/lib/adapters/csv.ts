@@ -24,6 +24,7 @@ const ALIAS: Record<string, string[]> = {
   adName: ["ad name", "nombre del anuncio", "anuncio"],
   adId: ["ad id", "identificador del anuncio"],
   date: ["day", "date", "día", "dia", "fecha", "reporting starts", "inicio del informe"],
+  dateEnd: ["reporting ends", "fin del informe", "ends", "hasta"],
   spend: ["amount spent", "importe gastado", "importe gasto", "gasto", "spend"],
   impressions: ["impressions", "impresiones"],
   reach: ["reach", "alcance"],
@@ -87,6 +88,29 @@ function monedaDelEncabezado(encabezado: string | undefined): "ARS" | "USD" | nu
   return m ? (m[1] as "ARS" | "USD") : null;
 }
 
+/**
+ * Reparte un entero en `n` partes que suman exactamente el total.
+ *
+ * Se toma la diferencia entre dos acumulados redondeados hacia abajo, en vez
+ * de dar el resto a los primeros días. Suma exactamente igual —no se pierde
+ * ni se inventa un centavo— pero además el resto queda esparcido a lo largo
+ * del período: mirar media quincena da la mitad del total, y no el piso.
+ */
+function repartir(total: number, n: number): number[] {
+  return Array.from({ length: n }, (_, i) =>
+    Math.floor((total * (i + 1)) / n) - Math.floor((total * i) / n),
+  );
+}
+
+/** Los días del rango, inclusive. */
+function diasEntre(desde: string, hasta: string): string[] {
+  const out: string[] = [];
+  for (let t = Date.parse(`${desde}T00:00:00Z`); t <= Date.parse(`${hasta}T00:00:00Z`); t += 86_400_000) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 function entero(valor: string | undefined): number {
   const n = Number(String(valor ?? "").replace(/[^\d-]/g, ""));
   return Number.isFinite(n) ? n : 0;
@@ -101,6 +125,8 @@ export interface ResultadoImportacion {
   moneda: "ARS" | "USD";
   /** true si salió del encabezado; false si se usó la elegida a mano. */
   monedaDetectada: boolean;
+  /** Cuántos días abarcaba el informe cuando no traía desglose diario. */
+  repartidoEnDias: number | null;
 }
 
 /**
@@ -123,6 +149,7 @@ export function parsearCsvMeta(texto: string, monedaPorDefecto: "ARS" | "USD"): 
     adName: indiceDe(encabezados, "adName"),
     adId: indiceDe(encabezados, "adId"),
     date: indiceDe(encabezados, "date"),
+    dateEnd: indiceDe(encabezados, "dateEnd"),
     spend: indiceDe(encabezados, "spend"),
     impressions: indiceDe(encabezados, "impressions"),
     reach: indiceDe(encabezados, "reach"),
@@ -163,7 +190,11 @@ export function parsearCsvMeta(texto: string, monedaPorDefecto: "ARS" | "USD"): 
       continue;
     }
 
+    const hastaCrudo = idx.dateEnd === -1 ? "" : (c[idx.dateEnd] ?? "").slice(0, 10);
+    const hasta = /^\d{4}-\d{2}-\d{2}$/.test(hastaCrudo) && hastaCrudo > fecha ? hastaCrudo : null;
+
     filas.push({
+      hasta,
       campaignExternalId: idx.campaignId === -1 ? "" : (c[idx.campaignId] ?? ""),
       campaignName,
       adSetExternalId: idx.adSetId === -1 ? undefined : c[idx.adSetId],
@@ -184,7 +215,57 @@ export function parsearCsvMeta(texto: string, monedaPorDefecto: "ARS" | "USD"): 
     throw new Error("No pude leer ninguna fila. Revisá que el archivo sea el export de Ads Manager.");
   }
 
-  return { filas, descartadas, nivel, moneda, monedaDetectada: monedaDetectada !== null };
+  // Informes sin desglose por día.
+  //
+  // Ads Manager, si no se tilda "Día" al exportar, devuelve UNA fila por
+  // campaña con el total del período y las columnas "Inicio del informe" y
+  // "Fin del informe". Guardar eso tal cual deja todo el gasto del mes
+  // apoyado en un solo día —el primero del informe—, y entonces la pantalla
+  // aparece vacía en cuanto mirás cualquier otro período. Es exactamente el
+  // caso de "lo cargué y no pasa nada".
+  //
+  // Se reparte en partes iguales entre los días del rango. Es un supuesto, y
+  // por eso la pantalla lo dice: quien quiera el día real vuelve a exportar
+  // con el desglose. El reparto no pierde ni inventa un centavo, así que el
+  // total del período es exacto aunque cada día sea aproximado.
+  let repartidoEnDias = 0;
+  const expandidas: FilaInsight[] = [];
+  for (const f of filas) {
+    if (!f.hasta) {
+      expandidas.push(f);
+      continue;
+    }
+    const dias = diasEntre(f.date, f.hasta);
+    repartidoEnDias = Math.max(repartidoEnDias, dias.length);
+
+    const gasto = repartir(f.spendCents, dias.length);
+    const impr = repartir(f.impressions, dias.length);
+    const alc = repartir(f.reach, dias.length);
+    const clk = repartir(f.clicks, dias.length);
+    const lds = repartir(f.platformLeads, dias.length);
+
+    dias.forEach((d, i) => {
+      expandidas.push({
+        ...f,
+        hasta: null,
+        date: d,
+        spendCents: gasto[i],
+        impressions: impr[i],
+        reach: alc[i],
+        clicks: clk[i],
+        platformLeads: lds[i],
+      });
+    });
+  }
+
+  return {
+    filas: expandidas,
+    descartadas,
+    nivel,
+    moneda,
+    monedaDetectada: monedaDetectada !== null,
+    repartidoEnDias: repartidoEnDias || null,
+  };
 }
 
 export const adaptadorCsv: AdaptadorPlataforma = {

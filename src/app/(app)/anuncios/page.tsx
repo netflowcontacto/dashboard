@@ -1,7 +1,12 @@
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { resolveRange, plural } from "@/lib/dates";
-import { rendimientoDeAnuncios, type FilaAnuncio, type Nivel } from "@/lib/metrics/anuncios";
+import {
+  rendimientoDeAnuncios,
+  nivelesConDatos,
+  type FilaAnuncio,
+  type Nivel,
+} from "@/lib/metrics/anuncios";
 import { CLASE_CREATIVIDAD_LABEL, type ClaseCreatividad } from "@/lib/adquisicion";
 import { formatMoney } from "@/lib/money";
 import { loadFx } from "@/lib/fx";
@@ -48,8 +53,19 @@ export default async function AnunciosPage({
     from: sp.from as string,
     to: sp.to as string,
   });
-  const nivel: Nivel = sp.nivel === "campaña" ? "campaña" : "anuncio";
   const clientId = sp.cliente ? Number(sp.cliente) : undefined;
+  // Sin elección explícita se abre en el nivel que el período tenga cargado:
+  // un informe de campañas no trae anuncios, y abrir en "por anuncio" haría
+  // ver una pantalla vacía sobre datos que sí están.
+  const hay = await nivelesConDatos(range, clientId);
+  const nivel: Nivel =
+    sp.nivel === "campaña"
+      ? "campaña"
+      : sp.nivel === "anuncio"
+        ? "anuncio"
+        : hay.anuncio
+          ? "anuncio"
+          : "campaña";
 
   const [fx, clientes] = await Promise.all([loadFx(), clientsList()]);
   const filas = await rendimientoDeAnuncios(range, fx, { clientId, nivel });
@@ -59,10 +75,11 @@ export default async function AnunciosPage({
     (a, f) => ({
       inversion: a.inversion + f.inversion,
       leads: a.leads + f.leads,
+      leadsPlataforma: a.leadsPlataforma + f.leadsPlataforma,
       calificados: a.calificados + f.calificados,
       turnos: a.turnos + f.turnos,
     }),
-    { inversion: 0, leads: 0, calificados: 0, turnos: 0 },
+    { inversion: 0, leads: 0, leadsPlataforma: 0, calificados: 0, turnos: 0 },
   );
 
   const conGasto = filas.filter((f) => f.inversion > 0);
@@ -82,9 +99,18 @@ export default async function AnunciosPage({
       <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Inversión" value={plata(total.inversion)} />
         <StatCard
-          label="Leads"
+          label="Leads en el CRM"
           value={total.leads}
-          hint={total.inversion > 0 && total.leads > 0 ? `${plata(total.inversion / total.leads)} por lead` : undefined}
+          // Cuando la plataforma reporta resultados y el CRM no tiene a nadie,
+          // el número no está mal: falta cargar la gente. Decirlo es más útil
+          // que mostrar un cero sin explicación.
+          hint={
+            total.inversion > 0 && total.leads > 0
+              ? `${plata(total.inversion / total.leads)} por lead`
+              : total.leadsPlataforma > 0
+                ? `Meta reporta ${total.leadsPlataforma}: falta cargarlos acá`
+                : undefined
+          }
         />
         <StatCard
           label="Calificados"
@@ -113,14 +139,21 @@ export default async function AnunciosPage({
         } con gasto en el período, ordenados por inversión.`}
       >
         {filas.length === 0 ? (
-          <EmptyState
-            title="Todavía no hay campañas cargadas"
-            detail={
-              puedeCargar
-                ? "El gasto entra importando el informe que exporta Meta Ads Manager. Abajo está el formulario."
-                : "El gasto lo carga Paid Media importando el informe de Meta Ads Manager."
-            }
-          />
+          nivel === "anuncio" && hay.campana ? (
+            <EmptyState
+              title="El informe cargado viene por campaña, no por anuncio"
+              detail="El gasto del período está cargado a nivel campaña: ese archivo no trae anuncios. Mirá «Por campaña» acá arriba. Para ver anuncio por anuncio, volvé a exportar desde Ads Manager con el desglose por anuncio."
+            />
+          ) : (
+            <EmptyState
+              title={nivel === "anuncio" ? "Todavía no hay anuncios cargados" : "Todavía no hay campañas cargadas"}
+              detail={
+                puedeCargar
+                  ? "El gasto entra importando el informe que exporta Meta Ads Manager. Abajo está el formulario."
+                  : "El gasto lo carga Paid Media importando el informe de Meta Ads Manager."
+              }
+            />
+          )
         ) : (
           <div className="scroll-x">
             <table className="nf">

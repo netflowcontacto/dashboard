@@ -85,7 +85,7 @@ export async function importarCsvMeta(
     return { error: errorMessage(e) };
   }
 
-  const { filas, descartadas, nivel, moneda: monedaReal, monedaDetectada } = parseado;
+  const { filas, descartadas, nivel, moneda: monedaReal, monedaDetectada, repartidoEnDias } = parseado;
 
   try {
     const resumen = await tx(async (q) => {
@@ -201,10 +201,14 @@ export async function importarCsvMeta(
       ? "según dice el encabezado del archivo"
       : "según lo que elegiste — el archivo no lo aclaraba";
 
+    const aviso = repartidoEnDias
+      ? ` El informe no traía desglose por día, así que el total se repartió en partes iguales entre los ${repartidoEnDias} días del período: el total es exacto, cada día es aproximado. Para ver el día real, volvé a exportar tildando "Día".`
+      : "";
+
     return {
       ok:
         `Listo: ${resumen.filas} ${resumen.filas === 1 ? "fila" : "filas"} del ${resumen.desde} ` +
-        `al ${resumen.hasta}, en ${monedaReal === "USD" ? "dólares" : "pesos"} (${comoSupo}).`,
+        `al ${resumen.hasta}, en ${monedaReal === "USD" ? "dólares" : "pesos"} (${comoSupo}).${aviso}`,
       detalle: resumen,
       descartadas: descartadas.length > 0 ? descartadas : undefined,
     };

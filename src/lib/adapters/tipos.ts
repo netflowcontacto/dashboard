@@ -19,6 +19,11 @@ import type { OrigenDato, Plataforma } from "../adquisicion";
 
 /** Una fila de gasto y entrega, ya normalizada, lista para guardar. */
 export interface FilaInsight {
+  /**
+   * Fecha final, cuando el informe viene por rango y no por día. El parser la
+   * usa para repartir el total entre los días y después la deja en null.
+   */
+  hasta?: string | null;
   /** Identificador de la campaña en la plataforma. Vacío si la carga es manual. */
   campaignExternalId: string;
   campaignName: string;

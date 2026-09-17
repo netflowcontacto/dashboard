@@ -18,7 +18,9 @@ export default function Filtros({
 }) {
   const href = (cambios: Record<string, string | undefined>) => {
     const sp = new URLSearchParams();
-    const base = { nivel: nivel === "anuncio" ? undefined : nivel, cliente: clienteId ? String(clienteId) : undefined };
+    // El nivel viaja siempre explícito: sin él la pantalla elige sola, y
+    // entonces hacer clic en "Por anuncio" podría devolver la vista de campañas.
+    const base = { nivel, cliente: clienteId ? String(clienteId) : undefined };
     for (const [k, v] of Object.entries({ ...base, ...cambios })) if (v) sp.set(k, v);
     const qs = sp.toString();
     return qs ? `/anuncios?${qs}` : "/anuncios";
@@ -34,7 +36,7 @@ export default function Filtros({
         aria-label="Nivel de detalle"
         className="inline-flex overflow-hidden rounded-lg border border-border bg-surface"
       >
-        <Link href={href({ nivel: undefined })} className={seg(nivel === "anuncio")}>
+        <Link href={href({ nivel: "anuncio" })} className={seg(nivel === "anuncio")}>
           Por anuncio
         </Link>
         <Link href={href({ nivel: "campaña" })} className={seg(nivel === "campaña")}>
